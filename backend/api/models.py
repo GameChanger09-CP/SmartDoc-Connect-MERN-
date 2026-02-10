@@ -1,10 +1,10 @@
 from django.db import models
 from django.contrib.auth.models import AbstractUser
+import uuid
 
 class User(AbstractUser):
     ROLE_CHOICES = [
         ('Client', 'Client'),
-        ('Vendor', 'Vendor'),
         ('Dept_Admin', 'Department Admin'),
         ('Main_Admin', 'Main Admin'),
     ]
@@ -19,40 +19,51 @@ class User(AbstractUser):
     )
     gov_id = models.FileField(upload_to='kyc_docs/', null=True, blank=True)
 
-    # --- AUTOMATIC ADMIN FIX ---
     def save(self, *args, **kwargs):
-        # If this user is a Superuser (created via terminal), AUTOMATICALLY set correct role
         if self.is_superuser:
             self.role = 'Main_Admin'
             self.kyc_status = 'Verified'
-            self.is_staff = True  # Ensures access to Django admin panel if needed
-        
+            self.is_staff = True
         super().save(*args, **kwargs)
 
 class Department(models.Model):
     name = models.CharField(max_length=100)
-    keywords = models.TextField(help_text="Comma-separated keywords for AI routing (e.g., invoice, salary, tax)")
+    keywords = models.TextField(help_text="Comma-separated keywords for AI routing")
 
     def __str__(self):
         return self.name
 
 class Document(models.Model):
+    # Core Info
     user = models.ForeignKey(User, on_delete=models.CASCADE)
     file = models.FileField(upload_to='uploads/')
-    uploaded_at = models.DateTimeField(auto_now_add=True)
-    status = models.CharField(
-        max_length=20, 
-        default='Review_Required'
-    )
-    priority = models.CharField(max_length=20, default='Normal')
-    current_dept = models.ForeignKey(Department, null=True, blank=True, on_delete=models.SET_NULL)
     tracking_id = models.CharField(max_length=10, unique=True, editable=False)
+    
+    # Status & AI
+    status = models.CharField(
+        max_length=50, 
+        default='Review_Required',
+        choices=[
+            ('Review_Required', 'Pending Admin Review'),
+            ('In_Progress', 'With Department'),
+            ('Dept_Reported', 'Report Submitted by Dept'),
+            ('Completed', 'Sent to Client'),
+            ('Declined', 'Declined')
+        ]
+    )
+    current_dept = models.ForeignKey(Department, null=True, blank=True, on_delete=models.SET_NULL)
     ai_confidence = models.FloatField(default=0.0)
     is_frozen = models.BooleanField(default=False)
 
+    # --- WORKFLOW TRACKING ---
+    uploaded_at = models.DateTimeField(auto_now_add=True)
+    sent_to_dept_at = models.DateTimeField(null=True, blank=True)
+    dept_report = models.FileField(upload_to='dept_reports/', null=True, blank=True)
+    dept_processed_at = models.DateTimeField(null=True, blank=True)
+    final_report_sent_at = models.DateTimeField(null=True, blank=True)
+
     def save(self, *args, **kwargs):
         if not self.tracking_id:
-            import uuid
             self.tracking_id = str(uuid.uuid4())[:8].upper()
         super().save(*args, **kwargs)
 
@@ -64,6 +75,3 @@ class ActivityLog(models.Model):
 
     class Meta:
         ordering = ['-timestamp']
-
-    def __str__(self):
-        return f"{self.user.username} - {self.action}"
