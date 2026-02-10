@@ -4,7 +4,7 @@ from django.contrib.auth.models import AbstractUser
 class User(AbstractUser):
     ROLE_CHOICES = [
         ('Client', 'Client'),
-        ('Vendor', 'Vendor'),  # <--- THIS WAS MISSING
+        ('Vendor', 'Vendor'),
         ('Dept_Admin', 'Department Admin'),
         ('Main_Admin', 'Main Admin'),
     ]
@@ -18,6 +18,16 @@ class User(AbstractUser):
         default='Pending'
     )
     gov_id = models.FileField(upload_to='kyc_docs/', null=True, blank=True)
+
+    # --- AUTOMATIC ADMIN FIX ---
+    def save(self, *args, **kwargs):
+        # If this user is a Superuser (created via terminal), AUTOMATICALLY set correct role
+        if self.is_superuser:
+            self.role = 'Main_Admin'
+            self.kyc_status = 'Verified'
+            self.is_staff = True  # Ensures access to Django admin panel if needed
+        
+        super().save(*args, **kwargs)
 
 class Department(models.Model):
     name = models.CharField(max_length=100)
@@ -48,5 +58,12 @@ class Document(models.Model):
 
 class ActivityLog(models.Model):
     user = models.ForeignKey(User, on_delete=models.CASCADE)
-    action = models.CharField(max_length=255)
+    action = models.CharField(max_length=100)
+    details = models.TextField(blank=True, null=True)
     timestamp = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-timestamp']
+
+    def __str__(self):
+        return f"{self.user.username} - {self.action}"

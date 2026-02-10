@@ -1,5 +1,6 @@
 from rest_framework import serializers
-from .models import User, Document, Department
+# --- CRITICAL FIX: Added 'ActivityLog' to imports ---
+from .models import User, Document, Department, ActivityLog 
 
 class UserSerializer(serializers.ModelSerializer):
     class Meta:
@@ -29,15 +30,13 @@ class DocumentSerializer(serializers.ModelSerializer):
     class Meta:
         model = Document
         fields = '__all__'
-        # --- THE FIX IS HERE ---
-        # We mark 'user' and 'tracking_id' as read_only so the serializer doesn't complain they are missing
         read_only_fields = [
             'id', 
             'uploaded_at', 
             'status', 
             'ai_confidence', 
             'tracking_id', 
-            'user',            # <--- Vital Fix
+            'user', 
             'current_dept', 
             'is_frozen'
         ]
@@ -46,3 +45,10 @@ class DepartmentSerializer(serializers.ModelSerializer):
     class Meta:
         model = Department
         fields = '__all__'
+
+class ActivityLogSerializer(serializers.ModelSerializer):
+    timestamp = serializers.DateTimeField(format="%Y-%m-%d %H:%M:%S")
+    
+    class Meta:
+        model = ActivityLog
+        fields = ['id', 'action', 'details', 'timestamp']
