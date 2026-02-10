@@ -122,4 +122,4 @@ Go to Document Upload.
 
 Upload a PDF or Image related to finance (e.g., an invoice).
 
-Result: The system will automatically detect the content and route it to the FINANCE department if confidence > 80%.
+Result: The system will automatically detect the content and route it to the FINANCE department if confidence > 80%.    
