@@ -12,7 +12,8 @@ export default function Login() {
     setError('');
 
     try {
-      const res = await api.post('/auth/login/', {
+      // Hits the Node.js backend
+      const res = await api.post('/api/auth/login', {
         username: data.username,
         password: data.password
       });
@@ -31,6 +32,9 @@ export default function Login() {
         case 'Dept_Admin':
           navigate('/dept');
           break;
+        case 'Faculty':          
+          navigate('/faculty');  
+          break;                 
         case 'Client':
           navigate('/client');
           break;

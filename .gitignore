@@ -1,5 +1,5 @@
 .env
 node_modules/
-venv/
-__pycache__/
-backend/media/
+node-backend/uploads/
+node-backend/kyc_docs/
+node-backend/dept_reports/

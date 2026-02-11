@@ -9,18 +9,14 @@ export default function AdminDashboard() {
   const [pendingUsers, setPendingUsers] = useState([]);
   const [logs, setLogs] = useState([]);
 
-  // UI States
   const [showHistory, setShowHistory] = useState(false);
   const [logSearch, setLogSearch] = useState("");
 
-  // Modal States
   const [selectedUser, setSelectedUser] = useState(null);
   const [routingDoc, setRoutingDoc] = useState(null);
   const [infoDoc, setInfoDoc] = useState(null); 
 
-  const [newUser, setNewUser] = useState({
-    username: '', email: '', password: '', role: 'Client'
-  });
+  const [newUser, setNewUser] = useState({ username: '', email: '', password: '', role: 'Client' });
 
   const navigate = useNavigate();
   const username = localStorage.getItem('username') || 'Superuser';
@@ -28,7 +24,7 @@ export default function AdminDashboard() {
   const fetchData = async () => {
     try {
       const [dRes, uRes, depRes, lRes] = await Promise.all([
-        api.get('/documents/'), api.get('/users/'), api.get('/departments/'), api.get('/logs/')
+        api.get('/api/documents'), api.get('/api/users'), api.get('/api/departments'), api.get('/api/logs')
       ]);
       setDocs(Array.isArray(dRes.data) ? dRes.data : dRes.data.results || []);
       setPendingUsers(Array.isArray(uRes.data) ? uRes.data : uRes.data.results || []);
@@ -39,46 +35,46 @@ export default function AdminDashboard() {
 
   useEffect(() => { fetchData(); }, []);
 
-  // --- 📊 CALCULATE ANALYTICS ---
   const countState = (status) => docs.filter(d => d.status === status).length;
   
   const stats = {
-    pending: countState('Review_Required'),
-    withDept: countState('In_Progress'),
+    pending: countState('Review_Required') + countState('Returned_To_Main'),
+    withDept: countState('In_Progress') + countState('With_Faculty') + countState('Faculty_Reported'),
     reportReady: countState('Dept_Reported'),
     completed: countState('Completed'),
     declined: countState('Declined') + countState('Frozen')
   };
 
   const chartData = [
-    { name: 'New / Pending', count: stats.pending, fill: '#F59E0B' },     // Amber
-    { name: 'With Dept', count: stats.withDept, fill: '#3B82F6' },        // Blue
-    { name: 'Report Ready', count: stats.reportReady, fill: '#8B5CF6' },  // Purple
-    { name: 'Completed', count: stats.completed, fill: '#10B981' },       // Green
-    { name: 'Blocked', count: stats.declined, fill: '#EF4444' }           // Red
+    { name: 'New / Pending', count: stats.pending, fill: '#F59E0B' },     
+    { name: 'With Dept', count: stats.withDept, fill: '#3B82F6' },        
+    { name: 'Report Ready', count: stats.reportReady, fill: '#8B5CF6' },  
+    { name: 'Completed', count: stats.completed, fill: '#10B981' },       
+    { name: 'Blocked', count: stats.declined, fill: '#EF4444' }           
   ];
 
-  // --- ACTIONS ---
   const handleUserAction = async (id, action) => {
     if(!window.confirm(`Confirm ${action}?`)) return;
-    await api.post(`/users/${id}/${action}/`);
-    fetchData(); setSelectedUser(null);
+    try {
+      await api.post(`/api/users/${id}/${action}`);
+      fetchData(); setSelectedUser(null);
+    } catch (error) { alert("Action failed."); }
   };
 
   const toggleFreeze = async (id) => {
-    await api.post(`/documents/${id}/freeze/`); fetchData();
+    await api.post(`/api/documents/${id}/freeze`); fetchData();
   };
 
   const declineDoc = async (id) => {
     if(!window.confirm("Are you sure you want to DECLINE this document?")) return;
-    try { await api.post(`/documents/${id}/decline/`); fetchData(); }
+    try { await api.post(`/api/documents/${id}/decline`); fetchData(); }
     catch (error) { alert("Decline failed."); }
   };
 
   const handleForwardToClient = async (id) => {
     if(!window.confirm("Confirm: Forward the Department's PDF Report to the Client?")) return;
     try {
-      await api.post(`/documents/${id}/forward_to_client/`);
+      await api.post(`/api/documents/${id}/forward_to_client`);
       alert("✅ Success! Report sent to Client.");
       setInfoDoc(null); fetchData();
     } catch (error) { alert("Action failed. Check console."); }
@@ -89,7 +85,7 @@ export default function AdminDashboard() {
     const deptId = e.target.dept.value;
     if(!deptId) return alert("Please select a department.");
     try {
-      await api.post(`/documents/${routingDoc.id}/route_to/`, { department_id: deptId });
+      await api.post(`/api/documents/${routingDoc._id}/route_to`, { department_id: deptId });
       alert("Success! Document has been routed.");
       setRoutingDoc(null); fetchData();
     } catch (error) { alert("Routing Failed."); }
@@ -98,18 +94,14 @@ export default function AdminDashboard() {
   const handleCreateUser = async (e) => {
     e.preventDefault();
     try {
-      await api.post('/users/', newUser);
-      alert(`User ${newUser.username} created!`);
+      await api.post('/api/users/', newUser);
+      alert(`✅ User ${newUser.username} created successfully!`);
       setNewUser({ username: '', email: '', password: '', role: 'Client' });
       fetchData();
-    } catch (error) { alert("Failed to create user."); }
+    } catch (error) { alert(error.response?.data?.error || "Failed to create user."); }
   };
 
-  const getFileUrl = (path) => {
-    if (!path) return '#';
-    if (path.startsWith('http')) return path;
-    return `http://127.0.0.1:8000${path.startsWith('/') ? path : '/' + path}`;
-  };
+  const getFileUrl = (path) => path ? `http://127.0.0.1:8000/${path.replace(/\\/g, '/')}` : '#';
 
   const filteredLogs = logs.filter(log =>
     log.action.toLowerCase().includes(logSearch.toLowerCase()) ||
@@ -119,8 +111,6 @@ export default function AdminDashboard() {
 
   return (
     <div className="min-h-screen bg-gray-100 font-sans pb-12">
-
-      {/* HEADER */}
       <div className="bg-gray-900 text-white p-6 mb-8 shadow-2xl">
         <div className="max-w-7xl mx-auto flex flex-col md:flex-row justify-between items-center gap-4">
           <div className="flex items-center gap-4">
@@ -140,34 +130,22 @@ export default function AdminDashboard() {
       </div>
 
       <div className="max-w-7xl mx-auto px-6 mb-8">
-        {/* --- 🔥 ANALYTICS SECTION 🔥 --- */}
         <div className="grid grid-cols-1 lg:grid-cols-4 gap-6 mb-8">
-            {/* Quick Stat Cards */}
             <div className="lg:col-span-1 flex flex-col gap-4">
                 <div className="bg-white p-5 rounded-xl shadow-sm border-l-4 border-yellow-500">
                     <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Awaiting Admin Route</p>
-                    <div className="flex items-end justify-between mt-1">
-                        <p className="text-4xl font-extrabold text-gray-800">{stats.pending}</p>
-                        <span className="text-yellow-500 text-2xl mb-1">⏳</span>
-                    </div>
+                    <div className="flex items-end justify-between mt-1"><p className="text-4xl font-extrabold text-gray-800">{stats.pending}</p><span className="text-yellow-500 text-2xl mb-1">⏳</span></div>
                 </div>
                 <div className="bg-white p-5 rounded-xl shadow-sm border-l-4 border-blue-500">
                     <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Active In Departments</p>
-                    <div className="flex items-end justify-between mt-1">
-                        <p className="text-4xl font-extrabold text-gray-800">{stats.withDept + stats.reportReady}</p>
-                        <span className="text-blue-500 text-2xl mb-1">⚙️</span>
-                    </div>
+                    <div className="flex items-end justify-between mt-1"><p className="text-4xl font-extrabold text-gray-800">{stats.withDept + stats.reportReady}</p><span className="text-blue-500 text-2xl mb-1">⚙️</span></div>
                 </div>
                 <div className="bg-white p-5 rounded-xl shadow-sm border-l-4 border-green-500">
                     <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Successfully Completed</p>
-                    <div className="flex items-end justify-between mt-1">
-                        <p className="text-4xl font-extrabold text-gray-800">{stats.completed}</p>
-                        <span className="text-green-500 text-2xl mb-1">✅</span>
-                    </div>
+                    <div className="flex items-end justify-between mt-1"><p className="text-4xl font-extrabold text-gray-800">{stats.completed}</p><span className="text-green-500 text-2xl mb-1">✅</span></div>
                 </div>
             </div>
 
-            {/* Main Interactive Chart */}
             <div className="lg:col-span-3 bg-white p-6 rounded-xl shadow-sm border border-gray-200 flex flex-col">
                 <div className="flex justify-between items-center mb-4">
                     <h3 className="font-bold text-gray-800">Live Workflow Telemetry</h3>
@@ -189,22 +167,19 @@ export default function AdminDashboard() {
             </div>
         </div>
 
-        {/* MAIN LAYOUT */}
         <div className="grid grid-cols-1 lg:grid-cols-4 gap-8">
-          
-          {/* LEFT COL: Tools */}
           <div className="lg:col-span-1 space-y-6">
             <div className="bg-white p-5 rounded-xl shadow border border-gray-200">
               <h2 className="text-lg font-bold mb-3 text-green-700 border-b pb-2">👤 Create User</h2>
               <form onSubmit={handleCreateUser} className="space-y-3">
-                <input className="w-full border p-2 rounded text-xs" placeholder="Username" value={newUser.username} onChange={e => setNewUser({...newUser, username: e.target.value})} required />
-                <input className="w-full border p-2 rounded text-xs" placeholder="Email" value={newUser.email} onChange={e => setNewUser({...newUser, email: e.target.value})} required />
-                <input className="w-full border p-2 rounded text-xs" placeholder="Password" type="password" value={newUser.password} onChange={e => setNewUser({...newUser, password: e.target.value})} required />
-                <select className="w-full border p-2 rounded text-xs" value={newUser.role} onChange={e => setNewUser({...newUser, role: e.target.value})}>
+                <input className="w-full border p-2 rounded text-xs bg-gray-50 focus:bg-white transition" placeholder="Username" value={newUser.username} onChange={e => setNewUser({...newUser, username: e.target.value})} required />
+                <input className="w-full border p-2 rounded text-xs bg-gray-50 focus:bg-white transition" placeholder="Email" type="email" value={newUser.email} onChange={e => setNewUser({...newUser, email: e.target.value})} required />
+                <input className="w-full border p-2 rounded text-xs bg-gray-50 focus:bg-white transition" placeholder="Password" type="password" value={newUser.password} onChange={e => setNewUser({...newUser, password: e.target.value})} required />
+                <select className="w-full border p-2 rounded text-xs bg-gray-50 focus:bg-white transition" value={newUser.role} onChange={e => setNewUser({...newUser, role: e.target.value})}>
                   <option value="Client">Client</option>
                   <option value="Dept_Admin">Dept Admin</option>
                 </select>
-                <button className="w-full bg-green-600 text-white py-2 rounded font-bold text-xs hover:bg-green-700">Create</button>
+                <button className="w-full bg-green-600 text-white py-2 rounded font-bold text-xs hover:bg-green-700 shadow-sm transition">Create</button>
               </form>
             </div>
 
@@ -212,11 +187,11 @@ export default function AdminDashboard() {
               <h2 className="text-lg font-bold mb-3 text-gray-800 border-b pb-2">⚠ Pending Approvals</h2>
               <div className="space-y-2 max-h-64 overflow-y-auto">
                 {pendingUsers.map(user => (
-                  <div key={user.id} className="flex justify-between items-center bg-gray-50 p-2 rounded border">
+                  <div key={user._id} className="flex justify-between items-center bg-gray-50 p-2 rounded border">
                     <span onClick={() => setSelectedUser(user)} className="cursor-pointer text-blue-600 font-bold hover:underline text-xs">{user.username}</span>
                     <div className="flex gap-1">
-                      <button onClick={() => handleUserAction(user.id, 'approve')} className="bg-green-500 text-white px-2 py-1 rounded text-[10px]">✓</button>
-                      <button onClick={() => handleUserAction(user.id, 'reject')} className="bg-red-500 text-white px-2 py-1 rounded text-[10px]">✗</button>
+                      <button onClick={() => handleUserAction(user._id, 'approve')} className="bg-green-500 text-white px-2 py-1 rounded text-[10px]">✓</button>
+                      <button onClick={() => handleUserAction(user._id, 'reject')} className="bg-red-500 text-white px-2 py-1 rounded text-[10px]">✗</button>
                     </div>
                   </div>
                 ))}
@@ -225,7 +200,6 @@ export default function AdminDashboard() {
             </div>
           </div>
 
-          {/* MIDDLE: Document Control */}
           <div className={`space-y-6 transition-all duration-300 ${showHistory ? 'lg:col-span-2' : 'lg:col-span-3'}`}>
             <div className="bg-white p-6 rounded-xl shadow border border-gray-200">
               <h2 className="text-xl font-bold mb-4 text-blue-900">📄 Document Control</h2>
@@ -233,15 +207,12 @@ export default function AdminDashboard() {
                 <table className="w-full text-left text-sm">
                   <thead>
                     <tr className="bg-gray-50 text-gray-500 uppercase text-xs">
-                      <th className="p-3">ID</th>
-                      <th className="p-3">Status</th>
-                      <th className="p-3">Info</th>
-                      <th className="p-3 text-center">Actions</th>
+                      <th className="p-3">ID</th><th className="p-3">Status</th><th className="p-3 text-center">Info</th><th className="p-3 text-center">Actions</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-100">
                     {docs.map(doc => (
-                      <tr key={doc.id} className="hover:bg-gray-50">
+                      <tr key={doc._id} className="hover:bg-gray-50 transition">
                         <td className="p-3">
                           <a href={getFileUrl(doc.file)} target="_blank" rel="noopener noreferrer" className="font-mono text-blue-600 font-bold hover:underline">{doc.tracking_id}</a>
                           <div className="text-[10px] text-gray-400">{doc.uploaded_at?.slice(0,10)}</div>
@@ -250,40 +221,40 @@ export default function AdminDashboard() {
                           <span className={`px-2 py-1 rounded text-[10px] font-bold uppercase border ${
                             doc.status === 'Dept_Reported' ? 'bg-purple-50 text-purple-700 border-purple-200' :
                             doc.status === 'Completed' ? 'bg-green-50 text-green-700 border-green-200' :
-                            doc.status === 'Frozen' ? 'bg-red-50 text-red-700 border-red-200' : 'bg-yellow-50 text-yellow-700 border-yellow-200'
+                            doc.status === 'Returned_To_Main' ? 'bg-red-100 text-red-800 border-red-300 animate-pulse' :
+                            ['With_Faculty', 'Faculty_Reported'].includes(doc.status) ? 'bg-indigo-50 text-indigo-700 border-indigo-200' :
+                            ['Declined', 'Frozen'].includes(doc.status) ? 'bg-red-50 text-red-700 border-red-200' : 
+                            'bg-yellow-50 text-yellow-700 border-yellow-200'
                           }`}>
-                            {doc.status.replace('_', ' ')}
+                            {doc.status.replace(/_/g, ' ')}
                           </span>
                         </td>
-                        <td className="p-3">
+                        <td className="p-3 text-center">
                           <button onClick={() => setInfoDoc(doc)} className="text-gray-500 hover:text-blue-600 font-bold text-lg" title="View Metadata">ℹ️</button>
                         </td>
                         <td className="p-3 flex gap-2 justify-center">
-                          <button onClick={() => toggleFreeze(doc.id)} className="p-2 rounded bg-gray-100 hover:bg-gray-200" title="Freeze">{doc.is_frozen ? "🔓" : "❄"}</button>
-                          <button onClick={() => setRoutingDoc(doc)} className="p-2 rounded bg-blue-50 text-blue-600 font-bold hover:bg-blue-100 text-xs">Route</button>
-                          <button onClick={() => declineDoc(doc.id)} className="p-2 rounded bg-red-50 text-red-600 font-bold hover:bg-red-100 text-xs">✖</button>
+                          <button onClick={() => toggleFreeze(doc._id)} className="p-2 rounded bg-gray-100 hover:bg-gray-200 transition" title="Freeze">{doc.is_frozen ? "🔓" : "❄"}</button>
+                          <button onClick={() => setRoutingDoc(doc)} className="p-2 rounded bg-blue-50 text-blue-600 font-bold hover:bg-blue-100 text-xs transition">Route</button>
+                          <button onClick={() => declineDoc(doc._id)} className="p-2 rounded bg-red-50 text-red-600 font-bold hover:bg-red-100 text-xs transition">✖</button>
                         </td>
                       </tr>
                     ))}
+                    {docs.length === 0 && <tr><td colSpan="4" className="text-center p-8 text-gray-400 italic">No documents.</td></tr>}
                   </tbody>
                 </table>
               </div>
             </div>
           </div>
 
-          {/* RIGHT: Audit Log WITH SEARCH */}
           {showHistory && (
             <div className="lg:col-span-1 bg-white p-4 rounded-xl shadow h-[80vh] border border-gray-200 flex flex-col animate-fade-in-right">
               <h3 className="font-bold text-gray-800 mb-2 border-b pb-2 flex justify-between items-center">
-                <span>Audit Log</span>
-                <span className="text-xs bg-gray-200 px-2 py-1 rounded-full">{filteredLogs.length}</span>
+                <span>Audit Log</span><span className="text-xs bg-gray-200 px-2 py-1 rounded-full">{filteredLogs.length}</span>
               </h3>
-              
-              <input type="text" placeholder="Search logs..." value={logSearch} onChange={(e) => setLogSearch(e.target.value)} className="w-full text-xs p-2 mb-2 border rounded bg-gray-50 focus:outline-none focus:ring-1 focus:ring-blue-500" />
-              
+              <input type="text" placeholder="Search logs..." value={logSearch} onChange={(e) => setLogSearch(e.target.value)} className="w-full text-xs p-2 mb-2 border rounded bg-gray-50 focus:outline-none focus:ring-1 focus:ring-blue-500 transition" />
               <div className="space-y-2 overflow-y-auto flex-grow pr-1">
                 {filteredLogs.map(log => (
-                  <div key={log.id} className="text-xs p-2 bg-gray-50 border-b border-gray-100 rounded hover:bg-gray-100 transition">
+                  <div key={log._id} className="text-xs p-2 bg-gray-50 border-b border-gray-100 rounded hover:bg-gray-100 transition">
                     <div className="flex justify-between mb-1">
                       <span className="font-bold text-blue-600">{log.user_username || 'System'}</span>
                       <span className="text-[10px] text-gray-400">{log.timestamp?.slice(5, 16).replace('T', ' ')}</span>
@@ -299,8 +270,7 @@ export default function AdminDashboard() {
         </div>
       </div>
 
-      {/* --- MODALS --- */}
-      {/* 1. METADATA INFO MODAL */}
+      {/* MODALS */}
       {infoDoc && (
         <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 backdrop-blur-sm">
           <div className="bg-white p-6 rounded-xl shadow-2xl w-[500px] animate-scale-in">
@@ -308,7 +278,6 @@ export default function AdminDashboard() {
               <h3 className="text-xl font-bold text-gray-800">Document Metadata</h3>
               <button onClick={() => setInfoDoc(null)} className="text-gray-400 hover:text-red-500 text-xl font-bold">×</button>
             </div>
-            
             <div className="space-y-4 text-sm">
               <div className="bg-blue-50 p-4 rounded-lg border border-blue-100">
                 <h4 className="text-xs font-bold text-blue-800 uppercase mb-2">Client Information</h4>
@@ -318,70 +287,68 @@ export default function AdminDashboard() {
                   <div><p className="text-gray-500 text-xs">Tracking ID:</p><p className="font-mono font-bold text-blue-600">{infoDoc.tracking_id}</p></div>
                 </div>
               </div>
-
               <div className="bg-gray-50 p-4 rounded-lg border space-y-2">
                 <h4 className="text-xs font-bold text-gray-500 uppercase mb-2">Lifecycle Timeline</h4>
-                <div className="flex justify-between"><span className="text-gray-500">Uploaded:</span><span className="font-mono font-bold">{infoDoc.uploaded_at?.replace('T', ' ')}</span></div>
-                <div className="flex justify-between"><span className="text-gray-500">Sent to Dept:</span><span className="font-mono font-bold">{infoDoc.sent_to_dept_at?.replace('T', ' ') || '-'}</span></div>
-                <div className="flex justify-between"><span className="text-gray-500">Dept Processed:</span><span className="font-mono font-bold">{infoDoc.dept_processed_at?.replace('T', ' ') || '-'}</span></div>
-                <div className="flex justify-between border-t pt-2 mt-2"><span className="text-gray-900 font-bold">Client Received:</span><span className="font-mono font-bold text-green-600">{infoDoc.final_report_sent_at?.replace('T', ' ') || '-'}</span></div>
+                <div className="flex justify-between"><span className="text-gray-500">Uploaded:</span><span className="font-mono font-bold">{infoDoc.uploaded_at?.replace('T', ' ').slice(0, 16)}</span></div>
+                <div className="flex justify-between"><span className="text-gray-500">Sent to Dept:</span><span className="font-mono font-bold">{infoDoc.sent_to_dept_at ? infoDoc.sent_to_dept_at.replace('T', ' ').slice(0, 16) : '-'}</span></div>
+                {infoDoc.assigned_to_faculty_at && <div className="flex justify-between"><span className="text-gray-500">Assigned Faculty:</span><span className="font-mono font-bold text-yellow-600">{infoDoc.assigned_to_faculty_at.replace('T', ' ').slice(0, 16)}</span></div>}
+                {infoDoc.faculty_processed_at && <div className="flex justify-between"><span className="text-gray-500">Faculty Reported:</span><span className="font-mono font-bold text-purple-600">{infoDoc.faculty_processed_at.replace('T', ' ').slice(0, 16)}</span></div>}
+                <div className="flex justify-between"><span className="text-gray-500">Dept Processed:</span><span className="font-mono font-bold">{infoDoc.dept_processed_at ? infoDoc.dept_processed_at.replace('T', ' ').slice(0, 16) : '-'}</span></div>
+                <div className="flex justify-between border-t pt-2 mt-2"><span className="text-gray-900 font-bold">Client Received:</span><span className="font-mono font-bold text-green-600">{infoDoc.final_report_sent_at ? infoDoc.final_report_sent_at.replace('T', ' ').slice(0, 16) : '-'}</span></div>
               </div>
-
               <div>
                 <p className="text-xs font-bold text-gray-500 uppercase mb-1">Acknowledgement Report</p>
                 {infoDoc.dept_report ? (
                   <div className="flex flex-col gap-1">
                     <a href={getFileUrl(infoDoc.dept_report)} target="_blank" rel="noopener noreferrer" className="text-purple-600 font-bold hover:underline flex items-center gap-1">📄 View PDF Report</a>
-                    <span className="text-xs text-gray-400 font-mono">Report ID: {infoDoc.tracking_id}_REP</span>
                   </div>
                 ) : <span className="text-gray-400 italic">No report uploaded yet.</span>}
               </div>
             </div>
-
             <div className="mt-6 flex flex-col gap-3">
               {infoDoc.status === 'Dept_Reported' ? (
-                <button onClick={() => handleForwardToClient(infoDoc.id)} className="w-full bg-green-600 text-white py-3 rounded-lg font-bold shadow hover:bg-green-700 transition flex justify-center items-center gap-2"><span>📤</span> Forward Report to Client</button>
+                <button onClick={() => handleForwardToClient(infoDoc._id)} className="w-full bg-green-600 text-white py-3 rounded-lg font-bold shadow hover:bg-green-700 transition">📤 Forward Report to Client</button>
               ) : infoDoc.status === 'Completed' ? (
                 <div className="w-full bg-gray-100 text-green-700 py-2 rounded text-center font-bold border border-green-200">✔ Cycle Completed</div>
+              ) : infoDoc.status === 'Returned_To_Main' ? (
+                <div className="w-full bg-red-100 text-red-800 py-2 rounded text-center font-bold border border-red-200">Needs to be Re-Routed!</div>
               ) : (
-                <div className="w-full bg-gray-100 text-gray-400 py-2 rounded text-center text-xs italic">Waiting for Department Response...</div>
+                <div className="w-full bg-gray-100 text-gray-400 py-2 rounded text-center text-xs italic">Waiting for Response...</div>
               )}
-              <button onClick={() => setInfoDoc(null)} className="w-full bg-white border border-gray-300 py-2 rounded font-bold text-gray-600 hover:bg-gray-50">Close</button>
+              <button onClick={() => setInfoDoc(null)} className="w-full bg-white border border-gray-300 py-2 rounded font-bold text-gray-600 hover:bg-gray-50 transition">Close</button>
             </div>
           </div>
         </div>
       )}
 
-      {/* 2. Routing Modal */}
       {routingDoc && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 backdrop-blur-sm">
           <div className="bg-white p-8 rounded-xl shadow-2xl w-96">
-            <h3 className="text-xl font-bold mb-4">Route Document</h3>
+            <h3 className="text-xl font-bold mb-4 text-gray-800">Route Document</h3>
             <form onSubmit={handleRouteSubmit}>
-              <select name="dept" className="w-full border p-3 rounded-lg mb-6 bg-gray-50" required>
+              <select name="dept" className="w-full border p-3 rounded-lg mb-6 bg-gray-50 focus:bg-white transition" required>
                 <option value="">-- Choose Department --</option>
-                {depts.map(d => (<option key={d.id} value={d.id}>{d.name}</option>))}
+                {depts.map(d => (<option key={d._id} value={d._id}>{d.name}</option>))}
               </select>
               <div className="flex gap-3 justify-end">
-                <button type="button" onClick={() => setRoutingDoc(null)} className="px-4 py-2 text-gray-600 hover:bg-gray-100 rounded text-sm font-bold">Cancel</button>
-                <button type="submit" className="px-4 py-2 bg-blue-600 text-white font-bold rounded hover:bg-blue-700 text-sm">Confirm</button>
+                <button type="button" onClick={() => setRoutingDoc(null)} className="px-4 py-2 text-gray-600 hover:bg-gray-100 rounded text-sm font-bold transition">Cancel</button>
+                <button type="submit" className="px-4 py-2 bg-blue-600 text-white font-bold rounded hover:bg-blue-700 text-sm shadow-sm transition">Confirm</button>
               </div>
             </form>
           </div>
         </div>
       )}
 
-      {/* 3. User Detail Modal */}
       {selectedUser && (
         <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 backdrop-blur-sm">
-          <div className="bg-white p-8 rounded-xl w-96">
-            <h3 className="text-xl font-bold mb-4">User Details</h3>
-            <p><strong>Username:</strong> {selectedUser.username}</p>
-            <p><strong>Status:</strong> {selectedUser.kyc_status}</p>
+          <div className="bg-white p-8 rounded-xl w-96 shadow-2xl">
+            <h3 className="text-xl font-bold mb-4 text-gray-800">User Details</h3>
+            <p><strong>Username:</strong> <span className="text-blue-600 font-bold">{selectedUser.username}</span></p>
+            <p className="mt-2"><strong>Status:</strong> <span className={`px-2 py-1 rounded text-xs font-bold ${selectedUser.kyc_status === 'Pending' ? 'bg-yellow-100 text-yellow-700' : 'bg-green-100 text-green-700'}`}>{selectedUser.kyc_status}</span></p>
             {selectedUser.gov_id && (
-              <a href={getFileUrl(selectedUser.gov_id)} target="_blank" className="mt-4 block text-center w-full bg-blue-50 text-blue-700 py-2 rounded font-bold border border-blue-200">View ID Proof 📎</a>
+              <a href={getFileUrl(selectedUser.gov_id)} target="_blank" className="mt-4 block text-center w-full bg-blue-50 text-blue-700 py-2 rounded font-bold border border-blue-200 hover:bg-blue-100 transition">View ID Proof 📎</a>
             )}
-            <button onClick={() => setSelectedUser(null)} className="mt-4 w-full bg-gray-100 py-2 rounded font-bold text-gray-600">Close</button>
+            <button onClick={() => setSelectedUser(null)} className="mt-4 w-full bg-gray-100 py-2 rounded font-bold text-gray-600 hover:bg-gray-200 transition">Close</button>
           </div>
         </div>
       )}

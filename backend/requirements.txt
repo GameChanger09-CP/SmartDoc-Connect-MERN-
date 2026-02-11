@@ -1,8 +1,0 @@
-django
-djangorestframework
-django-cors-headers
-psycopg2-binary
-python-decouple
-Pillow
-google-generativeai  # NEW: For Gemini API
-PyPDF2               # NEW: To read PDF text
