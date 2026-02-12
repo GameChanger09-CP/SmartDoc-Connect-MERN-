@@ -1,108 +1,76 @@
-You can create a file named README.md in your project's root folder and paste this entire block inside. It covers everything from installing the database to running the AI.
-
-Markdown
 # 📂 SmartDoc Connect
 
-SmartDoc Connect is an AI-powered document management system that automatically routes uploaded documents (PDFs, Images) to the correct department using Google Gemini Vision AI.
+SmartDoc Connect is an enterprise-grade document management system. It uses **Google Gemini 2.0 Flash** to analyze document contents and automatically route them to the correct department. It features a complete hierarchy (Client, Main Admin, Dept Admin, Faculty) and automated email notifications.
 
 ## 🚀 Tech Stack
-* **Backend:** Django REST Framework (Python)
-* **Frontend:** React + Vite (Node.js)
-* **Database:** PostgreSQL
+* **Frontend:** React + Vite + Tailwind CSS
+* **Backend:** Node.js + Express.js
+* **Database:** MongoDB (Mongoose)
 * **AI Engine:** Google Gemini 2.0 Flash (via API)
+* **Notifications:** Nodemailer (SMTP)
 
 ---
 
-## 🛠️ System Prerequisites (Linux)
+## 🛠️ System Prerequisites
 Before starting, ensure you have the following installed:
 
+1.  **Node.js & npm:** (Download from [nodejs.org](https://nodejs.org/))
+2.  **MongoDB:**
+    * **Local:** Install [MongoDB Community Server](https://www.mongodb.com/try/download/community).
+    * **Cloud:** Or get a connection string from MongoDB Atlas.
+
+---
+
+## 📥 1. Setup the Project
+Clone the repository to your local machine:
+
 ```bash
-# 1. Update System
-sudo apt update && sudo apt upgrade -y
-
-# 2. Install Python, pip, and venv
-sudo apt install python3 python3-pip python3-venv -y
-
-# 3. Install Node.js & npm (for Frontend)
-curl -fsSL [https://deb.nodesource.com/setup_18.x](https://deb.nodesource.com/setup_18.x) | sudo -E bash -
-sudo apt install -y nodejs
-
-# 4. Install PostgreSQL (Database)
-sudo apt install postgresql postgresql-contrib libpq-dev -y
-📥 1. Setup the Project
-Clone the Repository
-Bash
 git clone <YOUR_GITHUB_REPO_URL_HERE>
 cd SmartDoc-Connect
-🐘 2. Database Setup (PostgreSQL)
-We need to create the database and user for the project.
+🐍 2. Backend Setup (Node.js)
+Navigate to the backend folder and install the required packages.
 
 Bash
-# Log in to PostgreSQL
-sudo -u postgres psql
+cd node-backend
 
-# Run these SQL commands inside the postgres prompt:
-CREATE DATABASE smartdoc_db;
-CREATE USER smartdoc_user WITH PASSWORD 'password123';
-ALTER ROLE smartdoc_user SET client_encoding TO 'utf8';
-ALTER ROLE smartdoc_user SET default_transaction_isolation TO 'read committed';
-ALTER ROLE smartdoc_user SET timezone TO 'UTC';
-GRANT ALL PRIVILEGES ON DATABASE smartdoc_db TO smartdoc_user;
-
-# Exit the prompt
-\q
-🐍 3. Backend Setup (Django)
-Navigate to the backend folder and set up the Python environment.
-
-Bash
-cd backend
-
-# 1. Create a Virtual Environment
-python3 -m venv venv
-
-# 2. Activate the Environment
-source venv/bin/activate
-
-# 3. Install Dependencies
-pip install django djangorestframework django-cors-headers psycopg2-binary google-generativeai python-dotenv pypdf
+# 1. Install Dependencies
+npm install
 Configure Environment Variables
-Create a .env file in the backend/ folder to store your secrets.
-
-Bash
-nano .env
-Paste this content inside .env:
+Create a .env file inside the node-backend/ folder and paste the following configuration:
 
 Code snippet
-# Database Config
-DB_NAME=smartdoc_db
-DB_USER=smartdoc_user
-DB_PASSWORD=password123
-DB_HOST=localhost
-DB_PORT=5432
+# Server Config
+PORT=8000
+MONGODB_URI=mongodb://127.0.0.1:27017/smartdoc_db
+JWT_SECRET=my_super_secret_secure_key_123
 
-# Google Gemini API Key (Get one at aistudio.google.com)
-GEMINI_API_KEY=AIzaSyDxxxx_YOUR_REAL_API_KEY_HERE
-(Save and exit with Ctrl+X, then Y, then Enter)
+# Google AI (Get key from aistudio.google.com)
+GEMINI_API_KEY=AIzaSyDxxxx_YOUR_REAL_API_KEY
 
-Run Migrations & Start Server
-Bash
-# 1. Apply Database Migrations
-python manage.py makemigrations
-python manage.py migrate
-
-# 2. Create a Superuser (Admin)
-python manage.py createsuperuser
-# (Follow the prompts to set username/password)
-
-# 3. Start the Backend Server
-python manage.py runserver
-✅ Backend is now running at: http://127.0.0.1:8000/
-
-⚛️ 4. Frontend Setup (React)
-Open a new terminal window (do not close the backend terminal) and navigate to the frontend folder.
+# Email Notifications (Gmail requires an App Password)
+MAIL_HOST=smtp.gmail.com
+MAIL_PORT=587
+MAIL_USER=your_email@gmail.com
+MAIL_PASS=your_16_digit_app_password
+Seed the Main Admin Account
+Since there is no public sign-up for Admins, you must create the first Main Admin via the terminal. Run this command inside node-backend/:
 
 Bash
-cd frontend
+node -e "require('mongoose').connect('mongodb://127.0.0.1:27017/smartdoc_db').then(() => { const bcrypt = require('bcryptjs'); const { User } = require('./models'); User.create({ username: 'admin', password: bcrypt.hashSync('admin123', 10), role: 'Main_Admin', kyc_status: 'Verified' }).then(() => { console.log('✅ Admin Created'); process.exit(); }); }).catch(e => { console.log('Error:', e.message); process.exit(); });"
+Username: admin
+
+Password: admin123
+
+Start the Server
+Bash
+node server.js
+✅ You should see: 🚀 Node API running on http://127.0.0.1:8000
+
+⚛️ 3. Frontend Setup (React)
+Open a new terminal window (keep the backend running) and navigate to the frontend folder.
+
+Bash
+cd src  # (Or wherever your React package.json is located, usually root or 'frontend')
 
 # 1. Install Node Dependencies
 npm install
@@ -111,15 +79,51 @@ npm install
 npm run dev
 ✅ Frontend is now running at: http://localhost:5173/
 
-🤖 5. How to Test the AI Auto-Routing
-Login to the frontend as the Admin (Superuser).
+🤖 4. How to Test the Workflow
+Phase 1: Main Admin Setup
+Login as Main Admin (admin / admin123).
 
-Go to the Department Management section.
+Go to the Dashboard.
 
-Create a department (e.g., User: FINANCE, Role: Dept_Admin).
+Use the "Provision User" tool to create a Department Admin (e.g., Role: Dept_Admin, Username: IT_Head).
 
-Go to Document Upload.
+Note: Creating a Dept Admin automatically creates the Department in the system.
 
-Upload a PDF or Image related to finance (e.g., an invoice).
+Phase 2: Dept Admin Setup
+Logout and Login as the new Dept Admin (IT_Head).
 
-Result: The system will automatically detect the content and route it to the FINANCE department if confidence > 80%.    
+Use the "Add Faculty" tool to create a Faculty member (e.g., Role: Faculty, Username: Prof_Smith).
+
+Phase 3: The Document Cycle (AI & Manual)
+Register a Client: Go to the Landing Page -> Client -> Sign Up.
+
+Upload: Login as Client -> Upload a Document.
+
+Routing:
+
+AI Mode: If enabled, the AI analyzes the doc and routes it to the correct Dept.
+
+Manual Mode: If AI confidence is low, it goes to the Main Admin ("Review Required").
+
+Processing:
+
+Main Admin routes it to IT_Head.
+
+IT_Head assigns it to Prof_Smith.
+
+Prof_Smith reviews it, uploads a generic report PDF, and submits it back.
+
+IT_Head approves the report.
+
+Main Admin forwards the final report to the Client.
+
+Completion: The Client receives an email and can download the final report from their dashboard.
+
+📧 5. Troubleshooting Emails
+If emails are not sending:
+
+Ensure you are using an App Password for Gmail (not your login password).
+
+Check that MAIL_PORT is 587.
+
+Check the backend terminal for logs: ✉️ Automated Email sent to....
