@@ -1,356 +1,392 @@
 import React, { useState, useEffect } from 'react';
 import api from '../api';
-import { useNavigate } from 'react-router-dom';
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell } from 'recharts';
+import Navbar from '../components/Navbar';
+import ProfileModal from '../components/ProfileModal';
+import { BarChart, Bar, XAxis, Tooltip, ResponsiveContainer, Cell } from 'recharts';
 
 export default function AdminDashboard() {
   const [docs, setDocs] = useState([]);
   const [depts, setDepts] = useState([]);
-  const [pendingUsers, setPendingUsers] = useState([]);
+  const [users, setUsers] = useState([]); 
+  const [deptStats, setDeptStats] = useState([]);
   const [logs, setLogs] = useState([]);
 
+  // UI States
   const [showHistory, setShowHistory] = useState(false);
   const [logSearch, setLogSearch] = useState("");
-
-  const [selectedUser, setSelectedUser] = useState(null);
+  const [filterStatus, setFilterStatus] = useState("All"); // <-- NEW FILTER STATE
+  
+  const [viewUserHistory, setViewUserHistory] = useState(null);
   const [routingDoc, setRoutingDoc] = useState(null);
   const [infoDoc, setInfoDoc] = useState(null); 
-
   const [newUser, setNewUser] = useState({ username: '', email: '', password: '', role: 'Client' });
-
-  const navigate = useNavigate();
-  const username = localStorage.getItem('username') || 'Superuser';
 
   const fetchData = async () => {
     try {
-      const [dRes, uRes, depRes, lRes] = await Promise.all([
-        api.get('/api/documents'), api.get('/api/users'), api.get('/api/departments'), api.get('/api/logs')
+      const [dRes, uRes, depRes, statRes, lRes] = await Promise.all([
+        api.get('/api/documents'), 
+        api.get('/api/users'), 
+        api.get('/api/departments'),
+        api.get('/api/stats'),
+        api.get('/api/logs')
       ]);
       setDocs(Array.isArray(dRes.data) ? dRes.data : dRes.data.results || []);
-      setPendingUsers(Array.isArray(uRes.data) ? uRes.data : uRes.data.results || []);
+      setUsers(Array.isArray(uRes.data) ? uRes.data : uRes.data.results || []);
       setDepts(Array.isArray(depRes.data) ? depRes.data : depRes.data.results || []);
+      setDeptStats(statRes.data.deptStats || []);
       setLogs(Array.isArray(lRes.data) ? lRes.data : lRes.data.results || []);
     } catch (err) { console.error("Fetch error", err); }
   };
 
   useEffect(() => { fetchData(); }, []);
 
+  // --- ANALYTICS ---
   const countState = (status) => docs.filter(d => d.status === status).length;
-  
   const stats = {
     pending: countState('Review_Required') + countState('Returned_To_Main'),
-    withDept: countState('In_Progress') + countState('With_Faculty') + countState('Faculty_Reported'),
-    reportReady: countState('Dept_Reported'),
+    active: countState('In_Progress') + countState('With_Faculty') + countState('Faculty_Reported') + countState('Dept_Reported'),
     completed: countState('Completed'),
-    declined: countState('Declined') + countState('Frozen')
+    blocked: countState('Declined') + countState('Frozen')
   };
 
   const chartData = [
-    { name: 'New / Pending', count: stats.pending, fill: '#F59E0B' },     
-    { name: 'With Dept', count: stats.withDept, fill: '#3B82F6' },        
-    { name: 'Report Ready', count: stats.reportReady, fill: '#8B5CF6' },  
-    { name: 'Completed', count: stats.completed, fill: '#10B981' },       
-    { name: 'Blocked', count: stats.declined, fill: '#EF4444' }           
+    { name: 'Pending', count: stats.pending, fill: '#F59E0B' },     
+    { name: 'Active', count: stats.active, fill: '#3B82F6' },        
+    { name: 'Done', count: stats.completed, fill: '#10B981' },       
+    { name: 'Blocked', count: stats.blocked, fill: '#EF4444' }           
   ];
 
+  // --- FILTER LOGIC (NEW) ---
+  const filteredDocs = docs.filter(doc => {
+      if (filterStatus === "All") return true;
+      if (filterStatus === "Action_Required") return ['Review_Required', 'Returned_To_Main', 'Dept_Reported'].includes(doc.status);
+      if (filterStatus === "In_Progress") return ['In_Progress', 'With_Faculty', 'Faculty_Reported'].includes(doc.status);
+      if (filterStatus === "Completed") return doc.status === 'Completed';
+      if (filterStatus === "Blocked") return ['Declined', 'Frozen'].includes(doc.status);
+      return true;
+  });
+
+  // --- ACTIONS ---
   const handleUserAction = async (id, action) => {
     if(!window.confirm(`Confirm ${action}?`)) return;
-    try {
-      await api.post(`/api/users/${id}/${action}`);
-      fetchData(); setSelectedUser(null);
-    } catch (error) { alert("Action failed."); }
-  };
-
-  const toggleFreeze = async (id) => {
-    await api.post(`/api/documents/${id}/freeze`); fetchData();
-  };
-
-  const declineDoc = async (id) => {
-    if(!window.confirm("Are you sure you want to DECLINE this document?")) return;
-    try { await api.post(`/api/documents/${id}/decline`); fetchData(); }
-    catch (error) { alert("Decline failed."); }
-  };
-
-  const handleForwardToClient = async (id) => {
-    if(!window.confirm("Confirm: Forward the Department's PDF Report to the Client?")) return;
-    try {
-      await api.post(`/api/documents/${id}/forward_to_client`);
-      alert("✅ Success! Report sent to Client.");
-      setInfoDoc(null); fetchData();
-    } catch (error) { alert("Action failed. Check console."); }
-  };
-
-  const handleRouteSubmit = async (e) => {
-    e.preventDefault();
-    const deptId = e.target.dept.value;
-    if(!deptId) return alert("Please select a department.");
-    try {
-      await api.post(`/api/documents/${routingDoc._id}/route_to`, { department_id: deptId });
-      alert("Success! Document has been routed.");
-      setRoutingDoc(null); fetchData();
-    } catch (error) { alert("Routing Failed."); }
+    try { await api.post(`/api/users/${id}/${action}`); fetchData(); } 
+    catch (error) { alert("Action failed."); }
   };
 
   const handleCreateUser = async (e) => {
     e.preventDefault();
     try {
       await api.post('/api/users/', newUser);
-      alert(`✅ User ${newUser.username} created successfully!`);
+      alert(`✅ User ${newUser.username} created!`);
       setNewUser({ username: '', email: '', password: '', role: 'Client' });
       fetchData();
-    } catch (error) { alert(error.response?.data?.error || "Failed to create user."); }
+    } catch (error) { alert(error.response?.data?.error || "Failed."); }
+  };
+
+  // Document Actions
+  const toggleFreeze = async (id) => {
+    try { await api.post(`/api/documents/${id}/freeze`); fetchData(); }
+    catch (e) { alert("Freeze failed"); }
+  };
+
+  const declineDoc = async (id) => {
+    if(!window.confirm("Permanently Decline this document?")) return;
+    try { await api.post(`/api/documents/${id}/decline`); fetchData(); }
+    catch (e) { alert("Decline failed"); }
+  };
+
+  const handleRouteSubmit = async (e) => {
+    e.preventDefault();
+    const deptId = e.target.dept.value;
+    try {
+      await api.post(`/api/documents/${routingDoc._id}/route_to`, { department_id: deptId });
+      alert("Routed!"); setRoutingDoc(null); fetchData();
+    } catch (error) { alert("Failed."); }
+  };
+
+  const handleForwardToClient = async (id) => {
+      if(!window.confirm("Forward Report to Client?")) return;
+      try { await api.post(`/api/documents/${id}/forward_to_client`); fetchData(); setInfoDoc(null); }
+      catch(e) { alert("Failed"); }
   };
 
   const getFileUrl = (path) => path ? `http://127.0.0.1:8000/${path.replace(/\\/g, '/')}` : '#';
 
-  const filteredLogs = logs.filter(log =>
-    log.action.toLowerCase().includes(logSearch.toLowerCase()) ||
-    log.details.toLowerCase().includes(logSearch.toLowerCase()) ||
-    (log.user_username && log.user_username.toLowerCase().includes(logSearch.toLowerCase()))
-  );
-
   return (
-    <div className="min-h-screen bg-gray-100 font-sans pb-12">
-      <div className="bg-gray-900 text-white p-6 mb-8 shadow-2xl">
-        <div className="max-w-7xl mx-auto flex flex-col md:flex-row justify-between items-center gap-4">
-          <div className="flex items-center gap-4">
-            <div className="w-16 h-16 bg-red-600 rounded-full flex items-center justify-center text-3xl shadow-lg border-2 border-white">🛡️</div>
-            <div>
-              <h1 className="text-3xl font-extrabold tracking-tight">MAIN ADMIN</h1>
-              <p className="text-red-300 text-sm font-mono">System Overseer: {username}</p>
-            </div>
-          </div>
-          <div className="flex gap-3">
-            <button onClick={() => setShowHistory(!showHistory)} className="bg-gray-800 border border-gray-600 px-4 py-2 rounded text-sm font-bold hover:bg-gray-700">
-              {showHistory ? 'Hide Logs' : 'View Logs'}
-            </button>
-            <button onClick={() => {localStorage.clear(); navigate('/');}} className="bg-red-600 hover:bg-red-700 px-4 py-2 rounded text-sm font-bold shadow-lg">Logout</button>
-          </div>
-        </div>
-      </div>
+    <div className="min-h-screen bg-gray-50 font-sans">
+      <Navbar toggleHistory={() => setShowHistory(!showHistory)} />
 
-      <div className="max-w-7xl mx-auto px-6 mb-8">
-        <div className="grid grid-cols-1 lg:grid-cols-4 gap-6 mb-8">
-            <div className="lg:col-span-1 flex flex-col gap-4">
-                <div className="bg-white p-5 rounded-xl shadow-sm border-l-4 border-yellow-500">
-                    <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Awaiting Admin Route</p>
-                    <div className="flex items-end justify-between mt-1"><p className="text-4xl font-extrabold text-gray-800">{stats.pending}</p><span className="text-yellow-500 text-2xl mb-1">⏳</span></div>
-                </div>
-                <div className="bg-white p-5 rounded-xl shadow-sm border-l-4 border-blue-500">
-                    <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Active In Departments</p>
-                    <div className="flex items-end justify-between mt-1"><p className="text-4xl font-extrabold text-gray-800">{stats.withDept + stats.reportReady}</p><span className="text-blue-500 text-2xl mb-1">⚙️</span></div>
-                </div>
-                <div className="bg-white p-5 rounded-xl shadow-sm border-l-4 border-green-500">
-                    <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Successfully Completed</p>
-                    <div className="flex items-end justify-between mt-1"><p className="text-4xl font-extrabold text-gray-800">{stats.completed}</p><span className="text-green-500 text-2xl mb-1">✅</span></div>
-                </div>
+      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        
+        {/* KPI Cards */}
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+            <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 flex items-center justify-between hover:shadow-md transition">
+                <div><p className="text-gray-500 text-xs font-bold uppercase tracking-widest">Pending</p><h3 className="text-3xl font-extrabold text-yellow-500">{stats.pending}</h3></div>
+                <div className="p-3 bg-yellow-50 rounded-xl text-2xl">⏳</div>
             </div>
-
-            <div className="lg:col-span-3 bg-white p-6 rounded-xl shadow-sm border border-gray-200 flex flex-col">
-                <div className="flex justify-between items-center mb-4">
-                    <h3 className="font-bold text-gray-800">Live Workflow Telemetry</h3>
-                    <span className="bg-blue-50 text-blue-600 px-2 py-1 rounded text-xs font-bold border border-blue-100">Live</span>
-                </div>
-                <div className="flex-grow w-full min-h-[200px]">
-                    <ResponsiveContainer width="100%" height="100%">
-                        <BarChart data={chartData} margin={{ top: 10, right: 10, left: -25, bottom: 0 }}>
-                            <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#E5E7EB" />
-                            <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{fill: '#6B7280', fontSize: 12, fontWeight: 600}} dy={10} />
-                            <YAxis axisLine={false} tickLine={false} tick={{fill: '#9CA3AF', fontSize: 12}} />
-                            <Tooltip cursor={{fill: '#F3F4F6'}} contentStyle={{borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.1)'}} />
-                            <Bar dataKey="count" radius={[6, 6, 0, 0]} barSize={60}>
-                                {chartData.map((entry, index) => ( <Cell key={`cell-${index}`} fill={entry.fill} /> ))}
-                            </Bar>
-                        </BarChart>
-                    </ResponsiveContainer>
-                </div>
+            <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 flex items-center justify-between hover:shadow-md transition">
+                <div><p className="text-gray-500 text-xs font-bold uppercase tracking-widest">Processing</p><h3 className="text-3xl font-extrabold text-blue-600">{stats.active}</h3></div>
+                <div className="p-3 bg-blue-50 rounded-xl text-2xl">⚙️</div>
+            </div>
+            <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 flex items-center justify-between hover:shadow-md transition">
+                <div><p className="text-gray-500 text-xs font-bold uppercase tracking-widest">Finished</p><h3 className="text-3xl font-extrabold text-green-600">{stats.completed}</h3></div>
+                <div className="p-3 bg-green-50 rounded-xl text-2xl">✅</div>
+            </div>
+            <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 flex items-center justify-between hover:shadow-md transition">
+                <div><p className="text-gray-500 text-xs font-bold uppercase tracking-widest">Depts Active</p><h3 className="text-3xl font-extrabold text-purple-600">{depts.length}</h3></div>
+                <div className="p-3 bg-purple-50 rounded-xl text-2xl">🏢</div>
             </div>
         </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-4 gap-8">
-          <div className="lg:col-span-1 space-y-6">
-            <div className="bg-white p-5 rounded-xl shadow border border-gray-200">
-              <h2 className="text-lg font-bold mb-3 text-green-700 border-b pb-2">👤 Create User</h2>
-              <form onSubmit={handleCreateUser} className="space-y-3">
-                <input className="w-full border p-2 rounded text-xs bg-gray-50 focus:bg-white transition" placeholder="Username" value={newUser.username} onChange={e => setNewUser({...newUser, username: e.target.value})} required />
-                <input className="w-full border p-2 rounded text-xs bg-gray-50 focus:bg-white transition" placeholder="Email" type="email" value={newUser.email} onChange={e => setNewUser({...newUser, email: e.target.value})} required />
-                <input className="w-full border p-2 rounded text-xs bg-gray-50 focus:bg-white transition" placeholder="Password" type="password" value={newUser.password} onChange={e => setNewUser({...newUser, password: e.target.value})} required />
-                <select className="w-full border p-2 rounded text-xs bg-gray-50 focus:bg-white transition" value={newUser.role} onChange={e => setNewUser({...newUser, role: e.target.value})}>
-                  <option value="Client">Client</option>
-                  <option value="Dept_Admin">Dept Admin</option>
-                </select>
-                <button className="w-full bg-green-600 text-white py-2 rounded font-bold text-xs hover:bg-green-700 shadow-sm transition">Create</button>
-              </form>
-            </div>
-
-            <div className="bg-white p-5 rounded-xl shadow border border-gray-200">
-              <h2 className="text-lg font-bold mb-3 text-gray-800 border-b pb-2">⚠ Pending Approvals</h2>
-              <div className="space-y-2 max-h-64 overflow-y-auto">
-                {pendingUsers.map(user => (
-                  <div key={user._id} className="flex justify-between items-center bg-gray-50 p-2 rounded border">
-                    <span onClick={() => setSelectedUser(user)} className="cursor-pointer text-blue-600 font-bold hover:underline text-xs">{user.username}</span>
-                    <div className="flex gap-1">
-                      <button onClick={() => handleUserAction(user._id, 'approve')} className="bg-green-500 text-white px-2 py-1 rounded text-[10px]">✓</button>
-                      <button onClick={() => handleUserAction(user._id, 'reject')} className="bg-red-500 text-white px-2 py-1 rounded text-[10px]">✗</button>
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+            
+            {/* LEFT COLUMN */}
+            <div className="space-y-8">
+                <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
+                    <h3 className="font-bold text-gray-800 mb-4">Live Traffic</h3>
+                    <div className="h-48 w-full">
+                        <ResponsiveContainer width="100%" height="100%">
+                            <BarChart data={chartData}><XAxis dataKey="name" axisLine={false} tickLine={false} fontSize={10} /><Tooltip cursor={{fill: '#f3f4f6'}} contentStyle={{borderRadius:'8px'}} /><Bar dataKey="count" radius={[4,4,0,0]}>{chartData.map((e,i)=><Cell key={i} fill={e.fill}/>)}</Bar></BarChart>
+                        </ResponsiveContainer>
                     </div>
-                  </div>
-                ))}
-                {pendingUsers.length === 0 && <p className="text-gray-400 italic text-xs">No pending users.</p>}
-              </div>
-            </div>
-          </div>
-
-          <div className={`space-y-6 transition-all duration-300 ${showHistory ? 'lg:col-span-2' : 'lg:col-span-3'}`}>
-            <div className="bg-white p-6 rounded-xl shadow border border-gray-200">
-              <h2 className="text-xl font-bold mb-4 text-blue-900">📄 Document Control</h2>
-              <div className="overflow-x-auto">
-                <table className="w-full text-left text-sm">
-                  <thead>
-                    <tr className="bg-gray-50 text-gray-500 uppercase text-xs">
-                      <th className="p-3">ID</th><th className="p-3">Status</th><th className="p-3 text-center">Info</th><th className="p-3 text-center">Actions</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-gray-100">
-                    {docs.map(doc => (
-                      <tr key={doc._id} className="hover:bg-gray-50 transition">
-                        <td className="p-3">
-                          <a href={getFileUrl(doc.file)} target="_blank" rel="noopener noreferrer" className="font-mono text-blue-600 font-bold hover:underline">{doc.tracking_id}</a>
-                          <div className="text-[10px] text-gray-400">{doc.uploaded_at?.slice(0,10)}</div>
-                        </td>
-                        <td className="p-3">
-                          <span className={`px-2 py-1 rounded text-[10px] font-bold uppercase border ${
-                            doc.status === 'Dept_Reported' ? 'bg-purple-50 text-purple-700 border-purple-200' :
-                            doc.status === 'Completed' ? 'bg-green-50 text-green-700 border-green-200' :
-                            doc.status === 'Returned_To_Main' ? 'bg-red-100 text-red-800 border-red-300 animate-pulse' :
-                            ['With_Faculty', 'Faculty_Reported'].includes(doc.status) ? 'bg-indigo-50 text-indigo-700 border-indigo-200' :
-                            ['Declined', 'Frozen'].includes(doc.status) ? 'bg-red-50 text-red-700 border-red-200' : 
-                            'bg-yellow-50 text-yellow-700 border-yellow-200'
-                          }`}>
-                            {doc.status.replace(/_/g, ' ')}
-                          </span>
-                        </td>
-                        <td className="p-3 text-center">
-                          <button onClick={() => setInfoDoc(doc)} className="text-gray-500 hover:text-blue-600 font-bold text-lg" title="View Metadata">ℹ️</button>
-                        </td>
-                        <td className="p-3 flex gap-2 justify-center">
-                          <button onClick={() => toggleFreeze(doc._id)} className="p-2 rounded bg-gray-100 hover:bg-gray-200 transition" title="Freeze">{doc.is_frozen ? "🔓" : "❄"}</button>
-                          <button onClick={() => setRoutingDoc(doc)} className="p-2 rounded bg-blue-50 text-blue-600 font-bold hover:bg-blue-100 text-xs transition">Route</button>
-                          <button onClick={() => declineDoc(doc._id)} className="p-2 rounded bg-red-50 text-red-600 font-bold hover:bg-red-100 text-xs transition">✖</button>
-                        </td>
-                      </tr>
-                    ))}
-                    {docs.length === 0 && <tr><td colSpan="4" className="text-center p-8 text-gray-400 italic">No documents.</td></tr>}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          </div>
-
-          {showHistory && (
-            <div className="lg:col-span-1 bg-white p-4 rounded-xl shadow h-[80vh] border border-gray-200 flex flex-col animate-fade-in-right">
-              <h3 className="font-bold text-gray-800 mb-2 border-b pb-2 flex justify-between items-center">
-                <span>Audit Log</span><span className="text-xs bg-gray-200 px-2 py-1 rounded-full">{filteredLogs.length}</span>
-              </h3>
-              <input type="text" placeholder="Search logs..." value={logSearch} onChange={(e) => setLogSearch(e.target.value)} className="w-full text-xs p-2 mb-2 border rounded bg-gray-50 focus:outline-none focus:ring-1 focus:ring-blue-500 transition" />
-              <div className="space-y-2 overflow-y-auto flex-grow pr-1">
-                {filteredLogs.map(log => (
-                  <div key={log._id} className="text-xs p-2 bg-gray-50 border-b border-gray-100 rounded hover:bg-gray-100 transition">
-                    <div className="flex justify-between mb-1">
-                      <span className="font-bold text-blue-600">{log.user_username || 'System'}</span>
-                      <span className="text-[10px] text-gray-400">{log.timestamp?.slice(5, 16).replace('T', ' ')}</span>
-                    </div>
-                    <span className="font-semibold text-gray-700 block mb-1">{log.action}</span>
-                    <p className="text-gray-500 italic leading-tight">{log.details}</p>
-                  </div>
-                ))}
-                {filteredLogs.length === 0 && <p className="text-center text-gray-400 mt-10">No matching logs.</p>}
-              </div>
-            </div>
-          )}
-        </div>
-      </div>
-
-      {/* MODALS */}
-      {infoDoc && (
-        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 backdrop-blur-sm">
-          <div className="bg-white p-6 rounded-xl shadow-2xl w-[500px] animate-scale-in">
-            <div className="flex justify-between items-center mb-6 border-b pb-2">
-              <h3 className="text-xl font-bold text-gray-800">Document Metadata</h3>
-              <button onClick={() => setInfoDoc(null)} className="text-gray-400 hover:text-red-500 text-xl font-bold">×</button>
-            </div>
-            <div className="space-y-4 text-sm">
-              <div className="bg-blue-50 p-4 rounded-lg border border-blue-100">
-                <h4 className="text-xs font-bold text-blue-800 uppercase mb-2">Client Information</h4>
-                <div className="grid grid-cols-2 gap-2">
-                  <div><p className="text-gray-500 text-xs">Client Name:</p><p className="font-bold text-gray-900">{infoDoc.client_username || 'Unknown'}</p></div>
-                  <div><p className="text-gray-500 text-xs">User ID:</p><p className="font-mono font-bold text-gray-900">#{infoDoc.client_id}</p></div>
-                  <div><p className="text-gray-500 text-xs">Tracking ID:</p><p className="font-mono font-bold text-blue-600">{infoDoc.tracking_id}</p></div>
                 </div>
-              </div>
-              <div className="bg-gray-50 p-4 rounded-lg border space-y-2">
-                <h4 className="text-xs font-bold text-gray-500 uppercase mb-2">Lifecycle Timeline</h4>
-                <div className="flex justify-between"><span className="text-gray-500">Uploaded:</span><span className="font-mono font-bold">{infoDoc.uploaded_at?.replace('T', ' ').slice(0, 16)}</span></div>
-                <div className="flex justify-between"><span className="text-gray-500">Sent to Dept:</span><span className="font-mono font-bold">{infoDoc.sent_to_dept_at ? infoDoc.sent_to_dept_at.replace('T', ' ').slice(0, 16) : '-'}</span></div>
-                {infoDoc.assigned_to_faculty_at && <div className="flex justify-between"><span className="text-gray-500">Assigned Faculty:</span><span className="font-mono font-bold text-yellow-600">{infoDoc.assigned_to_faculty_at.replace('T', ' ').slice(0, 16)}</span></div>}
-                {infoDoc.faculty_processed_at && <div className="flex justify-between"><span className="text-gray-500">Faculty Reported:</span><span className="font-mono font-bold text-purple-600">{infoDoc.faculty_processed_at.replace('T', ' ').slice(0, 16)}</span></div>}
-                <div className="flex justify-between"><span className="text-gray-500">Dept Processed:</span><span className="font-mono font-bold">{infoDoc.dept_processed_at ? infoDoc.dept_processed_at.replace('T', ' ').slice(0, 16) : '-'}</span></div>
-                <div className="flex justify-between border-t pt-2 mt-2"><span className="text-gray-900 font-bold">Client Received:</span><span className="font-mono font-bold text-green-600">{infoDoc.final_report_sent_at ? infoDoc.final_report_sent_at.replace('T', ' ').slice(0, 16) : '-'}</span></div>
-              </div>
-              <div>
-                <p className="text-xs font-bold text-gray-500 uppercase mb-1">Acknowledgement Report</p>
-                {infoDoc.dept_report ? (
-                  <div className="flex flex-col gap-1">
-                    <a href={getFileUrl(infoDoc.dept_report)} target="_blank" rel="noopener noreferrer" className="text-purple-600 font-bold hover:underline flex items-center gap-1">📄 View PDF Report</a>
-                  </div>
-                ) : <span className="text-gray-400 italic">No report uploaded yet.</span>}
-              </div>
-            </div>
-            <div className="mt-6 flex flex-col gap-3">
-              {infoDoc.status === 'Dept_Reported' ? (
-                <button onClick={() => handleForwardToClient(infoDoc._id)} className="w-full bg-green-600 text-white py-3 rounded-lg font-bold shadow hover:bg-green-700 transition">📤 Forward Report to Client</button>
-              ) : infoDoc.status === 'Completed' ? (
-                <div className="w-full bg-gray-100 text-green-700 py-2 rounded text-center font-bold border border-green-200">✔ Cycle Completed</div>
-              ) : infoDoc.status === 'Returned_To_Main' ? (
-                <div className="w-full bg-red-100 text-red-800 py-2 rounded text-center font-bold border border-red-200">Needs to be Re-Routed!</div>
-              ) : (
-                <div className="w-full bg-gray-100 text-gray-400 py-2 rounded text-center text-xs italic">Waiting for Response...</div>
-              )}
-              <button onClick={() => setInfoDoc(null)} className="w-full bg-white border border-gray-300 py-2 rounded font-bold text-gray-600 hover:bg-gray-50 transition">Close</button>
-            </div>
-          </div>
-        </div>
-      )}
 
+                <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
+                    <h3 className="font-bold text-gray-800 mb-4 border-b pb-2">Department Load</h3>
+                    <div className="space-y-3">
+                        {deptStats.map((d, i) => (
+                            <div key={i} className="flex justify-between items-center text-sm">
+                                <span className="font-medium text-gray-600">{d.name}</span>
+                                <span className="px-2 py-1 rounded-full text-xs font-bold bg-blue-100 text-blue-700">{d.count} Pending</span>
+                            </div>
+                        ))}
+                        {deptStats.length === 0 && <p className="text-xs text-gray-400 italic">All departments clear.</p>}
+                    </div>
+                </div>
+
+                <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
+                    <h3 className="font-bold text-gray-800 mb-4 border-b pb-2">Provision User</h3>
+                    <form onSubmit={handleCreateUser} className="space-y-3">
+                        <input className="w-full border p-2 rounded text-xs bg-gray-50" placeholder="Username" value={newUser.username} onChange={e => setNewUser({...newUser, username: e.target.value})} required />
+                        <input className="w-full border p-2 rounded text-xs bg-gray-50" placeholder="Email" value={newUser.email} onChange={e => setNewUser({...newUser, email: e.target.value})} required />
+                        <input className="w-full border p-2 rounded text-xs bg-gray-50" placeholder="Password" type="password" value={newUser.password} onChange={e => setNewUser({...newUser, password: e.target.value})} required />
+                        <select className="w-full border p-2 rounded text-xs bg-gray-50" value={newUser.role} onChange={e => setNewUser({...newUser, role: e.target.value})}>
+                            <option value="Client">Client</option><option value="Dept_Admin">Dept Admin</option>
+                        </select>
+                        <button className="w-full bg-slate-800 text-white py-2 rounded font-bold text-xs hover:bg-slate-900 transition">Create Account</button>
+                    </form>
+                </div>
+            </div>
+
+            {/* RIGHT COLUMN */}
+            <div className="lg:col-span-2 space-y-8">
+                
+                {/* Documents Table - WITH FILTER */}
+                <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
+                    <div className="p-6 border-b border-gray-100 flex flex-col md:flex-row justify-between items-center gap-4">
+                        <div className="flex items-center gap-2">
+                            <h3 className="font-bold text-gray-800">Master Document Control</h3>
+                            <span className="bg-gray-100 text-gray-600 text-xs px-2 py-1 rounded font-bold">{filteredDocs.length} Found</span>
+                        </div>
+                        
+                        {/* FILTER DROPDOWN */}
+                        <select 
+                            value={filterStatus}
+                            onChange={(e) => setFilterStatus(e.target.value)}
+                            className="text-xs border-gray-200 rounded-lg py-2 px-3 bg-gray-50 font-semibold text-gray-600 focus:ring-2 focus:ring-blue-500 outline-none border"
+                        >
+                            <option value="All">All Documents</option>
+                            <option value="Action_Required">Action Required (Pending/Reported)</option>
+                            <option value="In_Progress">Active Processing (In Dept)</option>
+                            <option value="Completed">Completed</option>
+                            <option value="Blocked">Blocked / Declined</option>
+                        </select>
+                    </div>
+
+                    <div className="overflow-x-auto max-h-[600px]">
+                        <table className="w-full text-left text-sm">
+                            <thead className="bg-gray-50 text-gray-500 uppercase text-xs sticky top-0">
+                                <tr><th className="p-4">Tracking ID</th><th className="p-4">Status</th><th className="p-4 text-center">Controls</th></tr>
+                            </thead>
+                            <tbody className="divide-y divide-gray-100">
+                                {filteredDocs.map(doc => (
+                                    <tr key={doc._id} className="hover:bg-gray-50 transition">
+                                        <td className="p-4">
+                                            <a href={getFileUrl(doc.file)} target="_blank" rel="noopener noreferrer" className="font-mono text-blue-600 font-bold hover:underline">{doc.tracking_id}</a>
+                                            <div className="text-[10px] text-gray-400">Owner: {doc.client_username}</div>
+                                        </td>
+                                        <td className="p-4">
+                                            <span className={`px-2 py-1 rounded text-[10px] font-bold uppercase border ${
+                                                doc.status === 'Completed' ? 'bg-green-50 text-green-700 border-green-200' :
+                                                doc.status.includes('Returned') || doc.status === 'Review_Required' ? 'bg-red-50 text-red-700 border-red-200' :
+                                                doc.status === 'Dept_Reported' ? 'bg-purple-50 text-purple-700 border-purple-200' :
+                                                doc.status === 'Declined' ? 'bg-gray-200 text-gray-600 border-gray-300' :
+                                                'bg-yellow-50 text-yellow-700 border-yellow-200'
+                                            }`}>
+                                                {doc.status.replace(/_/g, ' ')}
+                                            </span>
+                                        </td>
+                                        <td className="p-4 flex justify-center gap-2">
+                                            {/* INFO */}
+                                            <button onClick={() => setInfoDoc(doc)} className="text-gray-400 hover:text-blue-600 text-xl p-1" title="View Timeline">ℹ️</button>
+                                            
+                                            {/* FREEZE */}
+                                            <button onClick={() => toggleFreeze(doc._id)} className="text-gray-500 hover:text-blue-600 text-xl p-1" title={doc.is_frozen ? "Unfreeze" : "Freeze"}>
+                                                {doc.is_frozen ? "🔒" : "❄️"}
+                                            </button>
+                                            
+                                            {/* ROUTE */}
+                                            <button onClick={() => setRoutingDoc(doc)} className="text-blue-600 font-bold text-xs bg-blue-50 px-3 py-1 rounded hover:bg-blue-100 border border-blue-200">
+                                                Route
+                                            </button>
+                                            
+                                            {/* DECLINE */}
+                                            <button onClick={() => declineDoc(doc._id)} className="text-red-600 font-bold text-xl p-1 hover:text-red-800" title="Decline">
+                                                ✖
+                                            </button>
+                                        </td>
+                                    </tr>
+                                ))}
+                                {filteredDocs.length === 0 && (
+                                    <tr><td colSpan="3" className="text-center p-8 text-gray-400 italic">No documents match this filter.</td></tr>
+                                )}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                {/* User Directory */}
+                <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
+                    <div className="p-6 border-b border-gray-100"><h3 className="font-bold text-gray-800">User Directory</h3></div>
+                    <div className="max-h-96 overflow-y-auto divide-y divide-gray-100">
+                        {users.map(u => (
+                            <div key={u._id} className="p-4 flex justify-between items-center hover:bg-gray-50 transition">
+                                <div className="flex items-center gap-3">
+                                    <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold text-white ${u.role === 'Dept_Admin' ? 'bg-orange-500' : 'bg-blue-500'}`}>{u.username[0].toUpperCase()}</div>
+                                    <div>
+                                        <p className="text-sm font-bold text-gray-800">{u.username}</p>
+                                        <p className="text-[10px] text-gray-500 uppercase">{u.role.replace('_', ' ')} • {u.kyc_status}</p>
+                                    </div>
+                                </div>
+                                <div className="flex items-center gap-2">
+                                    <button onClick={() => setViewUserHistory(u)} className="text-[10px] bg-white border border-gray-200 px-3 py-1 rounded font-bold text-gray-600 hover:bg-gray-50 transition shadow-sm">View History</button>
+                                    
+                                    {u.kyc_status === 'Pending' && (
+                                        <>
+                                            <button onClick={() => handleUserAction(u._id, 'approve')} className="text-green-600 bg-green-50 px-2 py-1 rounded text-xs hover:bg-green-100">✓</button>
+                                            <button onClick={() => handleUserAction(u._id, 'reject')} className="text-red-600 bg-red-50 px-2 py-1 rounded text-xs hover:bg-red-100">✗</button>
+                                        </>
+                                    )}
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            </div>
+
+            {/* RIGHT SLIDEOUT LOGS */}
+            {showHistory && (
+                <div className="fixed right-0 top-16 bottom-0 w-80 bg-white shadow-2xl border-l border-gray-200 p-4 z-30 overflow-y-auto animate-slide-in-right">
+                    <h3 className="font-bold text-gray-800 mb-2 border-b pb-2">Global Logs</h3>
+                    <input type="text" placeholder="Search..." value={logSearch} onChange={(e) => setLogSearch(e.target.value)} className="w-full text-xs p-2 mb-2 border rounded" />
+                    <div className="space-y-2">
+                        {logs.filter(l => l.action.toLowerCase().includes(logSearch.toLowerCase())).map(log => (
+                            <div key={log._id} className="text-xs p-2 bg-gray-50 border-l-2 border-blue-500 rounded">
+                                <span className="font-bold block text-blue-700">{log.user_username}</span>
+                                <span className="block font-semibold">{log.action}</span>
+                                <span className="text-[9px] text-gray-400">{log.timestamp?.slice(5, 16)}</span>
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            )}
+        </div>
+      </main>
+
+      {/* --- MODALS --- */}
+      {viewUserHistory && <ProfileModal targetUser={viewUserHistory} onClose={() => setViewUserHistory(null)} />}
+      
       {routingDoc && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 backdrop-blur-sm">
-          <div className="bg-white p-8 rounded-xl shadow-2xl w-96">
-            <h3 className="text-xl font-bold mb-4 text-gray-800">Route Document</h3>
+          <div className="bg-white p-8 rounded-xl shadow-2xl w-96 animate-scale-in">
+            <h3 className="text-xl font-bold mb-4">Route Document</h3>
             <form onSubmit={handleRouteSubmit}>
-              <select name="dept" className="w-full border p-3 rounded-lg mb-6 bg-gray-50 focus:bg-white transition" required>
+              <select name="dept" className="w-full border p-3 rounded-lg mb-6 bg-gray-50" required>
                 <option value="">-- Choose Department --</option>
                 {depts.map(d => (<option key={d._id} value={d._id}>{d.name}</option>))}
               </select>
               <div className="flex gap-3 justify-end">
-                <button type="button" onClick={() => setRoutingDoc(null)} className="px-4 py-2 text-gray-600 hover:bg-gray-100 rounded text-sm font-bold transition">Cancel</button>
-                <button type="submit" className="px-4 py-2 bg-blue-600 text-white font-bold rounded hover:bg-blue-700 text-sm shadow-sm transition">Confirm</button>
+                <button type="button" onClick={() => setRoutingDoc(null)} className="px-4 py-2 text-gray-600 font-bold">Cancel</button>
+                <button type="submit" className="px-4 py-2 bg-blue-600 text-white font-bold rounded hover:bg-blue-700">Confirm</button>
               </div>
             </form>
           </div>
         </div>
       )}
 
-      {selectedUser && (
-        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 backdrop-blur-sm">
-          <div className="bg-white p-8 rounded-xl w-96 shadow-2xl">
-            <h3 className="text-xl font-bold mb-4 text-gray-800">User Details</h3>
-            <p><strong>Username:</strong> <span className="text-blue-600 font-bold">{selectedUser.username}</span></p>
-            <p className="mt-2"><strong>Status:</strong> <span className={`px-2 py-1 rounded text-xs font-bold ${selectedUser.kyc_status === 'Pending' ? 'bg-yellow-100 text-yellow-700' : 'bg-green-100 text-green-700'}`}>{selectedUser.kyc_status}</span></p>
-            {selectedUser.gov_id && (
-              <a href={getFileUrl(selectedUser.gov_id)} target="_blank" className="mt-4 block text-center w-full bg-blue-50 text-blue-700 py-2 rounded font-bold border border-blue-200 hover:bg-blue-100 transition">View ID Proof 📎</a>
-            )}
-            <button onClick={() => setSelectedUser(null)} className="mt-4 w-full bg-gray-100 py-2 rounded font-bold text-gray-600 hover:bg-gray-200 transition">Close</button>
+      {/* INFO MODAL - RESTORED FULL TIMELINE */}
+      {infoDoc && (
+          <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 backdrop-blur-sm">
+              <div className="bg-white p-6 rounded-xl w-[500px] shadow-2xl animate-scale-in">
+                  <div className="flex justify-between items-center mb-4 border-b pb-2">
+                      <h3 className="text-lg font-bold text-gray-800">Document Lifecycle</h3>
+                      <button onClick={() => setInfoDoc(null)} className="text-gray-400 hover:text-red-500 font-bold text-xl">&times;</button>
+                  </div>
+                  
+                  <div className="space-y-4 text-sm">
+                      <div className="bg-blue-50 p-3 rounded-lg border border-blue-100">
+                          <p className="text-xs font-bold text-blue-800 uppercase">Tracking ID</p>
+                          <p className="font-mono text-lg font-bold text-blue-900">{infoDoc.tracking_id}</p>
+                      </div>
+
+                      <div className="bg-gray-50 p-4 rounded-lg border border-gray-200 space-y-3">
+                          <h4 className="text-xs font-bold text-gray-500 uppercase border-b pb-2">Timeline Events</h4>
+                          
+                          <div className="flex justify-between">
+                              <span className="text-gray-600">1. Uploaded:</span> 
+                              <span className="font-mono font-bold">{infoDoc.uploaded_at?.slice(0, 16).replace('T', ' ')}</span>
+                          </div>
+                          
+                          <div className="flex justify-between">
+                              <span className={infoDoc.sent_to_dept_at ? "text-gray-800 font-semibold" : "text-gray-400"}>2. Sent to Dept:</span> 
+                              <span className="font-mono">{infoDoc.sent_to_dept_at?.slice(0, 16).replace('T', ' ') || '-'}</span>
+                          </div>
+
+                          <div className="flex justify-between pl-4 border-l-2 border-yellow-200">
+                              <span className={infoDoc.assigned_to_faculty_at ? "text-gray-800 font-semibold" : "text-gray-400"}>↳ Faculty Assigned:</span> 
+                              <span className="font-mono text-xs">{infoDoc.assigned_to_faculty_at?.slice(0, 16).replace('T', ' ') || '-'}</span>
+                          </div>
+
+                          <div className="flex justify-between pl-4 border-l-2 border-purple-200">
+                              <span className={infoDoc.faculty_processed_at ? "text-gray-800 font-semibold" : "text-gray-400"}>↳ Faculty Reported:</span> 
+                              <span className="font-mono text-xs">{infoDoc.faculty_processed_at?.slice(0, 16).replace('T', ' ') || '-'}</span>
+                          </div>
+
+                          <div className="flex justify-between">
+                              <span className={infoDoc.dept_processed_at ? "text-gray-800 font-semibold" : "text-gray-400"}>3. Dept Approved:</span> 
+                              <span className="font-mono">{infoDoc.dept_processed_at?.slice(0, 16).replace('T', ' ') || '-'}</span>
+                          </div>
+
+                          <div className="flex justify-between border-t pt-2 mt-2">
+                              <span className={infoDoc.final_report_sent_at ? "text-green-700 font-bold" : "text-gray-400"}>4. Completed:</span> 
+                              <span className="font-mono font-bold text-green-600">{infoDoc.final_report_sent_at?.slice(0, 16).replace('T', ' ') || '-'}</span>
+                          </div>
+                      </div>
+
+                      {infoDoc.dept_report && (
+                          <div className="mt-4">
+                              <a href={getFileUrl(infoDoc.dept_report)} target="_blank" rel="noopener noreferrer" className="block text-center w-full bg-purple-600 text-white py-2 rounded font-bold hover:bg-purple-700">View PDF Report</a>
+                          </div>
+                      )}
+
+                      {infoDoc.status === 'Dept_Reported' && (
+                          <button onClick={() => handleForwardToClient(infoDoc._id)} className="w-full bg-green-600 text-white py-3 rounded-lg font-bold shadow hover:bg-green-700 mt-2">
+                              Forward Final Report to Client
+                          </button>
+                      )}
+                  </div>
+              </div>
           </div>
-        </div>
       )}
     </div>
   );

@@ -1,5 +1,33 @@
 const bcrypt = require('bcryptjs');
-const { User, Department, ActivityLog } = require('../models');
+const { User, Department, ActivityLog, Document } = require('../models');
+
+// --- NEW: AGGREGATED DASHBOARD STATS ---
+exports.getDashboardStats = async (req, res) => {
+    try {
+        if (req.user.role !== 'Main_Admin') return res.status(403).json({ error: "Unauthorized" });
+
+        // 1. Get Department-wise Pending Docs (Aggregation Pipeline)
+        const deptStats = await Document.aggregate([
+            { $match: { status: { $in: ['In_Progress', 'With_Faculty', 'Dept_Reported'] } } },
+            { $group: { _id: "$current_dept", count: { $sum: 1 } } },
+            { $lookup: { from: "departments", localField: "_id", foreignField: "_id", as: "dept_info" } },
+            { $unwind: "$dept_info" },
+            { $project: { name: "$dept_info.name", count: 1 } }
+        ]);
+
+        // 2. Get User Counts
+        const userCounts = {
+            clients: await User.countDocuments({ role: 'Client' }),
+            staff: await User.countDocuments({ role: { $in: ['Dept_Admin', 'Faculty'] } }),
+            pending: await User.countDocuments({ kyc_status: 'Pending' })
+        };
+
+        res.json({ deptStats, userCounts });
+    } catch (error) {
+        console.error(error);
+        res.status(500).json({ error: "Stats fetch failed" });
+    }
+};
 
 // --- USERS ---
 exports.getPendingUsers = async (req, res) => {
@@ -23,9 +51,7 @@ exports.createUser = async (req, res) => {
         const { username, email, password, role } = req.body;
         const hashedPassword = await bcrypt.hash(password, 10);
         
-        // 1. MAIN ADMIN CREATING A DEPT ADMIN
         if (req.user.role === 'Main_Admin' && role === 'Dept_Admin') {
-            // FIXED MONGOOSE WARNING HERE -> changed "new: true" to "returnDocument: 'after'"
             let dept = await Department.findOneAndUpdate(
                 { name: username }, { keywords: username.toLowerCase() }, { upsert: true, returnDocument: 'after' }
             );
@@ -34,14 +60,12 @@ exports.createUser = async (req, res) => {
             return res.status(201).json({ status: 'Created Dept Admin' });
         }
         
-        // 2. MAIN ADMIN CREATING A CLIENT
         if (req.user.role === 'Main_Admin' && role === 'Client') {
             await User.create({ username, email, password: hashedPassword, role, kyc_status: 'Verified' });
             await ActivityLog.create({ user: req.user._id, action: 'Created Client', details: username });
             return res.status(201).json({ status: 'Created Client' });
         }
         
-        // 3. DEPT ADMIN CREATING A FACULTY MEMBER
         if (req.user.role === 'Dept_Admin' && role === 'Faculty') {
             await User.create({ 
                 username, email, password: hashedPassword, role: 'Faculty', 
@@ -53,11 +77,8 @@ exports.createUser = async (req, res) => {
 
         res.status(403).json({ error: 'Unauthorized to create this role' });
     } catch (error) {
-        // CATCH DUPLICATE USERNAME ERRORS
-        if (error.code === 11000) {
-            return res.status(400).json({ error: "This username already exists in the system!" });
-        }
-        res.status(500).json({ error: "Failed to create user due to server error." });
+        if (error.code === 11000) return res.status(400).json({ error: "This username already exists!" });
+        res.status(500).json({ error: "Failed to create user." });
     }
 };
 
@@ -65,11 +86,9 @@ exports.approveUser = async (req, res) => {
     try {
         if (req.user.role !== 'Main_Admin') return res.status(403).json({ error: 'Unauthorized' });
         const user = await User.findByIdAndUpdate(req.params.id, { kyc_status: 'Verified' });
-        
         if (user && user.role === 'Dept_Admin') {
             await Department.findOneAndUpdate({ name: user.username }, { keywords: user.username.toLowerCase() }, { upsert: true, returnDocument: 'after' });
         }
-        
         await ActivityLog.create({ user: req.user._id, action: 'Approved User', details: user ? user.username : 'Unknown' });
         res.json({ status: 'Approved' });
     } catch (error) { res.status(500).json({ error: "Failed to approve user" }); }
@@ -88,10 +107,21 @@ exports.getDepartments = async (req, res) => {
     catch (error) { res.status(500).json({ error: "Failed to fetch departments" }); }
 };
 
+// --- LOGS (UPDATED) ---
 exports.getLogs = async (req, res) => {
     try {
-        const query = req.user.role === 'Main_Admin' ? {} : { user: req.user._id };
-        const logs = await ActivityLog.find(query).populate('user', 'username').sort({ timestamp: -1 });
+        let query = {};
+        
+        // If Main Admin sends ?user_id=XYZ, show logs for THAT user
+        if (req.user.role === 'Main_Admin' && req.query.user_id) {
+            query = { user: req.query.user_id };
+        } 
+        // Otherwise, show own logs (unless Main Admin wants all)
+        else if (req.user.role !== 'Main_Admin') {
+            query = { user: req.user._id };
+        }
+
+        const logs = await ActivityLog.find(query).populate('user', 'username role').sort({ timestamp: -1 });
         res.json(logs);
     } catch (error) { res.status(500).json({ error: "Failed to fetch logs" }); }
 };
