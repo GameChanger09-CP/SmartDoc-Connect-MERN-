@@ -5,11 +5,9 @@ const userSchema = new mongoose.Schema({
     username: { type: String, required: true, unique: true },
     email: { type: String },
     password: { type: String, required: true },
-    // ADDED 'Faculty' ROLE
     role: { type: String, enum: ['Client', 'Dept_Admin', 'Main_Admin', 'Faculty'], default: 'Client' },
     kyc_status: { type: String, enum: ['Pending', 'Verified', 'Rejected'], default: 'Pending' },
     gov_id: { type: String, default: null },
-    // NEW: Link Users directly to a Department
     department: { type: mongoose.Schema.Types.ObjectId, ref: 'Department', default: null } 
 });
 
@@ -25,7 +23,6 @@ const documentSchema = new mongoose.Schema({
     file: { type: String, required: true },
     tracking_id: { type: String, unique: true, required: true },
     
-    // UPDATED STATUSES
     status: { 
         type: String, 
         enum: [
@@ -37,18 +34,29 @@ const documentSchema = new mongoose.Schema({
     },
     
     current_dept: { type: mongoose.Schema.Types.ObjectId, ref: 'Department', default: null },
-    // NEW: Track which Faculty has it
     current_faculty: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
     
     ai_confidence: { type: Number, default: 0.0 },
     is_frozen: { type: Boolean, default: false },
     dept_report: { type: String, default: null },
+
+    // 💰 --- NEW PAYMENT SYSTEM --- 💰
+    fee_total: { type: Number, default: 0 },
+    fee_status: { type: String, enum: ['Not_Applicable', 'Unpaid', 'Partial', 'Paid'], default: 'Not_Applicable' },
+    installments: [{
+        amount: Number,
+        razorpay_order_id: String,
+        razorpay_payment_id: { type: String, default: null },
+        status: { type: String, enum: ['Pending', 'Paid'], default: 'Pending' },
+        created_at: { type: Date, default: Date.now },
+        paid_at: { type: Date, default: null }
+    }],
     
     // DATES
     uploaded_at: { type: Date, default: Date.now },
     sent_to_dept_at: { type: Date, default: null },
-    assigned_to_faculty_at: { type: Date, default: null }, // NEW
-    faculty_processed_at: { type: Date, default: null },   // NEW
+    assigned_to_faculty_at: { type: Date, default: null }, 
+    faculty_processed_at: { type: Date, default: null },   
     dept_processed_at: { type: Date, default: null },
     final_report_sent_at: { type: Date, default: null }
 }, { toJSON: { virtuals: true }, toObject: { virtuals: true } });

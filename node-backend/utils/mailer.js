@@ -9,7 +9,7 @@ const transporter = nodemailer.createTransport({
         pass: process.env.MAIL_PASS,
     },
 });
-
+    
 exports.sendMail = async (to, subject, text) => {
     try {
         if (!to) return; // Skip if user has no email registered
