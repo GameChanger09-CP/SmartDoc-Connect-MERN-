@@ -8,11 +8,12 @@ export default function DeptDashboard() {
   const [filterStatus, setFilterStatus] = useState("All"); 
   const [infoDoc, setInfoDoc] = useState(null);
   
-  // Custom Payment
+  // Custom Payment State
   const [paymentDoc, setPaymentDoc] = useState(null); 
   const [installments, setInstallments] = useState([{ amount: '' }]); 
   const [newFaculty, setNewFaculty] = useState({ username: '', email: '', password: '', role: 'Faculty' });
 
+  // --- FETCH DATA ---
   const fetchData = async () => {
     try {
         const [docRes, facRes] = await Promise.all([api.get('/api/documents/'), api.get('/api/faculty/')]);
@@ -23,6 +24,7 @@ export default function DeptDashboard() {
 
   useEffect(() => { fetchData(); }, []);
 
+  // --- FILTERS ---
   const filteredDocs = docs.filter(doc => {
       if (filterStatus === "All") return true;
       if (filterStatus === "Action_Required") return doc.status === 'In_Progress';
@@ -31,13 +33,38 @@ export default function DeptDashboard() {
       return true;
   });
 
+  // --- HANDLERS ---
   const handleCreateFaculty = async (e) => { e.preventDefault(); try { await api.post('/api/users/', newFaculty); alert(`✅ Faculty created!`); setNewFaculty({ username: '', email: '', password: '', role: 'Faculty' }); fetchData(); } catch (error) { alert("Failed."); } };
+  
   const handleAssignToFaculty = async (docId, facultyId) => { if(!facultyId) return alert("Select faculty."); try { await api.post(`/api/documents/${docId}/assign_faculty`, { faculty_id: facultyId }); alert("Assigned!"); fetchData(); } catch (e) { alert("Failed."); } };
+  
   const handleReturnToMain = async (docId) => { if(!window.confirm("Return to Admin?")) return; try { await api.post(`/api/documents/${docId}/return`); alert("Returned."); fetchData(); } catch (e) { alert("Failed."); } };
-  const handleApproveFacultyReport = async (docId) => { if(!window.confirm("Approve report?")) return; try { await api.post(`/api/documents/${docId}/approve_faculty_report`); alert("Approved!"); fetchData(); } catch (e) { alert("Failed."); } };
+  
+  const handleApproveFacultyReport = async (docId) => { if(!window.confirm("Approve report? This will forward it to the Main Admin.")) return; try { await api.post(`/api/documents/${docId}/approve_faculty_report`); alert("Approved!"); fetchData(); } catch (e) { alert("Failed."); } };
+  
+  // 🔥 REJECT & ROUTE (RESET) 🔥
+  const handleRejectFacultyReport = async (docId) => {
+      if(!window.confirm("Reject this report? The document will be reset for re-assignment.")) return;
+      try { 
+          await api.post(`/api/documents/${docId}/reject_faculty_report`); 
+          alert("Report Rejected. Document reset to 'In Progress' for reassignment."); 
+          fetchData(); 
+      } catch (e) { alert("Failed."); }
+  };
+
+  // 🔥 TAKE BACK (UNASSIGN) 🔥
+  const handleUnassign = async (docId) => {
+      if(!window.confirm("Revoke this document from the faculty member?")) return;
+      try {
+          await api.post(`/api/documents/${docId}/unassign_faculty`);
+          alert("Document reclaimed! You can now assign it to someone else.");
+          fetchData();
+      } catch (e) { alert("Failed to unassign."); }
+  };
+
   const handleSubmitReport = async (id, file) => { if(!file) return alert("Select PDF"); const formData = new FormData(); formData.append('report_file', file); try { await api.post(`/api/documents/${id}/dept_submit_report/`, formData); alert("Sent!"); fetchData(); } catch(e) { alert("Failed."); } };
 
-  // Payment Logic
+  // --- PAYMENT LOGIC ---
   const handleAddInstallment = () => setInstallments([...installments, { amount: '' }]);
   const handleRemoveInstallment = (index) => setInstallments(installments.filter((_, i) => i !== index));
   const handleInstallmentChange = (index, value) => {
@@ -56,6 +83,7 @@ export default function DeptDashboard() {
       } catch (error) { alert(error.response?.data?.error || "Failed to request fee."); }
   };
 
+  // Helper for File URLs
   const getFileUrl = (path) => path ? `http://127.0.0.1:8000/${path.replace(/\\/g, '/')}` : '#';
 
   return (
@@ -117,6 +145,8 @@ export default function DeptDashboard() {
                         </div>
 
                         <div className="bg-slate-50 p-4 rounded-xl border border-slate-100">
+                            
+                            {/* CASE 1: NEW TASK (In_Progress) */}
                             {doc.status === 'In_Progress' && (
                                 <div className="flex flex-col md:flex-row gap-4 items-center">
                                     <div className="flex-grow flex gap-2 w-full"><select id={`fac-${doc._id}`} className="flex-grow p-2.5 border rounded-lg text-sm bg-white"><option value="">-- Assign --</option>{faculty.map(f => <option key={f._id} value={f._id}>{f.username}</option>)}</select><button onClick={() => handleAssignToFaculty(doc._id, document.getElementById(`fac-${doc._id}`).value)} className="bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-bold">Assign</button></div>
@@ -124,8 +154,40 @@ export default function DeptDashboard() {
                                     <button onClick={() => handleReturnToMain(doc._id)} className="text-red-500 text-xs font-bold underline hover:text-red-700">Return</button>
                                 </div>
                             )}
-                            {doc.status === 'With_Faculty' && <div className="flex justify-between items-center"><p className="text-sm text-blue-600 font-bold">⏳ With: {doc.current_faculty?.username}</p></div>}
-                            {doc.status === 'Faculty_Reported' && <button onClick={() => handleApproveFacultyReport(doc._id)} className="bg-green-600 text-white px-6 py-2 rounded-lg font-bold shadow hover:bg-green-700 transition">Approve</button>}
+
+                            {/* CASE 2: ASSIGNED (With_Faculty) - SHOW TAKE BACK BUTTON */}
+                            {doc.status === 'With_Faculty' && (
+                                <div className="flex justify-between items-center">
+                                    <p className="text-sm text-blue-600 font-bold">⏳ With: {doc.current_faculty?.username}</p>
+                                    <button onClick={() => handleUnassign(doc._id)} className="text-xs bg-red-100 text-red-600 px-3 py-1 rounded font-bold border border-red-200 hover:bg-red-200 transition">Revoke / Reassign</button>
+                                </div>
+                            )}
+
+                            {/* CASE 3: REPORT SUBMITTED (Faculty_Reported) - SHOW VIEW/APPROVE/REJECT */}
+                            {doc.status === 'Faculty_Reported' && (
+                                <div className="flex flex-col gap-3 w-full">
+                                    {/* 🔥 NEW: VIEW REPORT BUTTON 🔥 */}
+                                    <div className="bg-purple-50 p-3 rounded-lg border border-purple-100 flex justify-between items-center">
+                                        <div className="flex items-center gap-2">
+                                            <span className="text-xl">📑</span>
+                                            <div>
+                                                <p className="text-xs font-bold text-purple-800 uppercase">Report Submitted</p>
+                                                <p className="text-[10px] text-purple-600">By: {doc.current_faculty?.username}</p>
+                                            </div>
+                                        </div>
+                                        {doc.dept_report && (
+                                            <a href={getFileUrl(doc.dept_report)} target="_blank" rel="noreferrer" className="text-xs bg-white text-purple-700 px-4 py-2 rounded-lg border border-purple-200 font-bold hover:bg-purple-50 shadow-sm transition">
+                                                View PDF Report
+                                            </a>
+                                        )}
+                                    </div>
+
+                                    <div className="flex gap-3 justify-end pt-2 border-t border-slate-200/50">
+                                        <button onClick={() => handleRejectFacultyReport(doc._id)} className="bg-red-500 hover:bg-red-600 text-white px-4 py-2 rounded-lg font-bold shadow transition text-xs">Reject & Re-Route</button>
+                                        <button onClick={() => handleApproveFacultyReport(doc._id)} className="bg-green-600 hover:bg-green-700 text-white px-6 py-2 rounded-lg font-bold shadow transition text-xs">Approve & Forward</button>
+                                    </div>
+                                </div>
+                            )}
                         </div>
                     </div>
                 ))}
@@ -133,7 +195,7 @@ export default function DeptDashboard() {
         </div>
       </main>
 
-      {/* Payment Modal (Reused Logic) */}
+      {/* Payment Modal */}
       {paymentDoc && (
         <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 backdrop-blur-sm">
             <div className="bg-white p-8 rounded-xl shadow-2xl w-[400px] animate-scale-in max-h-[90vh] overflow-y-auto">
@@ -161,7 +223,7 @@ export default function DeptDashboard() {
         </div>
       )}
 
-      {/* Info Modal (Same as Admin) */}
+      {/* Info Modal */}
       {infoDoc && (
           <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 backdrop-blur-sm">
               <div className="bg-white p-6 rounded-xl w-[500px] shadow-2xl animate-scale-in">
@@ -183,8 +245,15 @@ export default function DeptDashboard() {
                               {infoDoc.installments.map((inst, idx) => (<div key={inst._id} className="flex justify-between text-xs mt-1 border-b border-blue-100 pb-1"><span className="text-slate-600">↳ Part {idx + 1} (₹{inst.amount}):</span><span className={inst.status==='Paid'?"text-green-600 font-bold":"text-red-500 font-bold"}>{inst.status}</span></div>))}
                           </div>
                       )}
-                      {infoDoc.status === 'Dept_Reported' && (<button onClick={() => handleForwardToClient(infoDoc._id)} className="w-full bg-green-600 text-white py-3 rounded-lg font-bold shadow hover:bg-green-700 mt-2">Forward Final Report to Client</button>)}
-                      <button onClick={() => setInfoDoc(null)} className="w-full bg-slate-100 py-2 rounded-lg font-bold hover:bg-slate-200">Close</button>
+                      
+                      {/* 🔥 VIEW REPORT IN MODAL TOO 🔥 */}
+                      {infoDoc.dept_report && (
+                          <div className="mt-4">
+                              <a href={getFileUrl(infoDoc.dept_report)} target="_blank" rel="noreferrer" className="block text-center w-full bg-purple-600 text-white py-2 rounded font-bold hover:bg-purple-700">View PDF Report</a>
+                          </div>
+                      )}
+
+                      <button onClick={() => setInfoDoc(null)} className="w-full bg-slate-100 py-2 rounded-lg font-bold hover:bg-slate-200 mt-2">Close</button>
                   </div>
               </div>
           </div>

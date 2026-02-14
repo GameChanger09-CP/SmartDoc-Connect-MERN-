@@ -1,6 +1,7 @@
 const { Document, Department, ActivityLog, User } = require('../models');
 const { v4: uuidv4 } = require('uuid');
 const { sendMail } = require('../utils/mailer');
+const fs = require('fs'); // 🔥 ADDED: File System module for deleting files
 
 exports.getDocs = async (req, res) => {
     try {
@@ -83,6 +84,28 @@ exports.assignToFaculty = async (req, res) => {
     } catch (error) { res.status(500).json({ error: "Failed to assign" }); }
 };
 
+// 🔥 TAKE BACK DOCUMENT FROM FACULTY (UNASSIGN) 🔥
+exports.unassignFaculty = async (req, res) => {
+    try {
+        if (req.user.role !== 'Dept_Admin') return res.status(403).json({ error: 'Unauthorized' });
+
+        const doc = await Document.findById(req.params.id).populate('current_faculty');
+        
+        // Reset to In_Progress so Dept Admin can assign to someone else
+        await Document.findByIdAndUpdate(req.params.id, {
+            status: 'In_Progress',
+            current_faculty: null
+        });
+
+        // Notify the Faculty that it was revoked
+        if (doc.current_faculty) {
+            sendMail(doc.current_faculty.email, "Assignment Revoked", `The document (${doc.tracking_id}) has been unassigned from your queue by the Dept Admin.`);
+        }
+
+        res.json({ status: 'Unassigned Successfully' });
+    } catch (error) { res.status(500).json({ error: "Failed to unassign" }); }
+};
+
 exports.submitReport = async (req, res) => {
     try {
         if (!req.file) return res.status(400).json({ error: "Report PDF required" });
@@ -122,7 +145,7 @@ exports.approveFacultyReport = async (req, res) => {
     } catch (error) { res.status(500).json({ error: "Failed to forward" }); }
 };
 
-// 🔥 NEW FEATURE: REJECT FACULTY REPORT & REASSIGN 🔥
+// 🔥 REJECT FACULTY REPORT & DELETE FILE FROM SERVER 🔥
 exports.rejectFacultyReport = async (req, res) => {
     try {
         if (req.user.role !== 'Dept_Admin') return res.status(403).json({ error: 'Unauthorized' });
@@ -130,20 +153,27 @@ exports.rejectFacultyReport = async (req, res) => {
         const doc = await Document.findById(req.params.id).populate('current_faculty');
         const facultyEmail = doc.current_faculty ? doc.current_faculty.email : null;
 
-        // Reset to 'In_Progress' so it shows up in the "Assign" list again
-        // Clear the old report and faculty assignment to start fresh
+        // 🗑️ DELETE THE REJECTED REPORT FILE FROM SERVER
+        if (doc.dept_report) {
+            fs.unlink(doc.dept_report, (err) => {
+                if (err) console.error("❌ Failed to delete rejected report:", err);
+                else console.log("🗑️ Deleted rejected report file:", doc.dept_report);
+            });
+        }
+
+        // Reset Status & Clear Fields
         await Document.findByIdAndUpdate(req.params.id, { 
             status: 'In_Progress', 
-            dept_report: null, 
+            dept_report: null, // Remove DB Reference
             faculty_processed_at: null,
-            current_faculty: null 
+            current_faculty: null // Optional: Unassign faculty to allow re-routing to ANYONE
         });
 
         if (facultyEmail) {
-            sendMail(facultyEmail, "Report Rejected", `Your report for document (${doc.tracking_id}) was rejected/returned by the Dept Admin. The task has been reset.`);
+            sendMail(facultyEmail, "Report Rejected", `Your report for document (${doc.tracking_id}) was rejected. The file has been deleted and the task reset.`);
         }
 
-        res.json({ status: 'Report Rejected & Reset' });
+        res.json({ status: 'Report Rejected, File Deleted & Reset' });
     } catch (error) { 
         console.error(error);
         res.status(500).json({ error: "Failed to reject report" }); 
