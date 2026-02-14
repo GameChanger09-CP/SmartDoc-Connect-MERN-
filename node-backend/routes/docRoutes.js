@@ -5,6 +5,7 @@ const paymentController = require('../controllers/paymentController');
 const auth = require('../middlewares/auth');
 const upload = require('../middlewares/upload');
 
+// Document Workflow Routes
 router.get('/', auth, docController.getDocs);
 router.post('/', auth, upload.single('file'), docController.uploadDoc);
 router.post('/:id/route_to', auth, docController.routeDoc);
@@ -16,8 +17,12 @@ router.post('/:id/assign_faculty', auth, docController.assignToFaculty);
 router.post('/:id/approve_faculty_report', auth, docController.approveFacultyReport);
 router.post('/:id/return', auth, docController.returnDoc);
 
+// 🔥 NEW ROUTE: Reject Faculty Report
+router.post('/:id/reject_faculty_report', auth, docController.rejectFacultyReport);
+
+// Payment Routes
 router.get('/get-razorpay-key', auth, paymentController.getKey);
 router.post('/:id/request_payment', auth, paymentController.requestPayment);
 router.post('/verify_payment', auth, paymentController.verifyPayment);
 
-module.exports = router;    
+module.exports = router;
