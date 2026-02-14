@@ -12,26 +12,27 @@ exports.requestPayment = async (req, res) => {
     try {
         if (!['Main_Admin', 'Dept_Admin'].includes(req.user.role)) return res.status(403).json({ error: "Unauthorized" });
 
-        const { installments } = req.body; // Now expects an array of numbers: [200, 300]
+        const { installments } = req.body; // Expects array: [500, 200, 300]
         const doc = await Document.findById(req.params.id).populate('user');
         
         if (!doc) return res.status(404).json({ error: "Document not found" });
         
-        // 🔒 SECURITY LOCK: Prevent re-estimation if fee is already set
+        // 🔒 LOCK: Prevent re-estimation if fee is already set
         if (doc.fee_total > 0) {
-            return res.status(400).json({ error: "Fee has already been estimated for this document." });
+            return res.status(400).json({ error: "Fee has already been estimated. Cannot modify." });
         }
 
         const newInstallments = [];
         let totalAmount = 0;
 
-        // Generate an order for each custom installment amount
+        // Generate orders for each custom installment
         for (let i = 0; i < installments.length; i++) {
             const amt = Number(installments[i]);
-            if (amt <= 0) continue; // Skip invalid amounts
+            if (amt <= 0) continue; 
             
             totalAmount += amt;
-            // Razorpay needs amount in paise (Integer)
+            
+            // Razorpay expects integer in paise
             const options = { amount: Math.round(amt * 100), currency: "INR", receipt: `rcpt_${doc.tracking_id}_${i}` };
             const order = await razorpay.orders.create(options);
             
@@ -47,8 +48,9 @@ exports.requestPayment = async (req, res) => {
 
         await ActivityLog.create({ user: req.user._id, action: 'Payment Requested', details: `Requested ₹${totalAmount} in ${newInstallments.length} parts for ${doc.tracking_id}` });
 
-        sendMail(doc.user.email, "Payment Required for Document Verification", 
-            `An administrative fee of ₹${totalAmount} has been requested for your document (${doc.tracking_id}). Log into your SmartDoc dashboard to complete the payment securely.`
+        // Email Client
+        sendMail(doc.user.email, "Payment Request Created", 
+            `An administrative fee of ₹${totalAmount} has been generated for your document (${doc.tracking_id}). You can pay this in ${newInstallments.length} installments via your dashboard.`
         );
 
         res.json({ status: 'Payment requests generated successfully' });

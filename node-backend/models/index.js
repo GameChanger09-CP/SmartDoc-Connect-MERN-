@@ -3,12 +3,16 @@ const mongoose = require('mongoose');
 // --- USER MODEL ---
 const userSchema = new mongoose.Schema({
     username: { type: String, required: true, unique: true },
-    email: { type: String },
+    email: { type: String, required: true },
     password: { type: String, required: true },
     role: { type: String, enum: ['Client', 'Dept_Admin', 'Main_Admin', 'Faculty'], default: 'Client' },
     kyc_status: { type: String, enum: ['Pending', 'Verified', 'Rejected'], default: 'Pending' },
     gov_id: { type: String, default: null },
-    department: { type: mongoose.Schema.Types.ObjectId, ref: 'Department', default: null } 
+    department: { type: mongoose.Schema.Types.ObjectId, ref: 'Department', default: null },
+    
+    // 🔥 NEW: Password Reset Fields
+    resetPasswordToken: String,
+    resetPasswordExpire: Date
 });
 
 // --- DEPARTMENT MODEL ---
@@ -40,7 +44,7 @@ const documentSchema = new mongoose.Schema({
     is_frozen: { type: Boolean, default: false },
     dept_report: { type: String, default: null },
 
-    // 💰 --- NEW PAYMENT SYSTEM --- 💰
+    // 💰 --- PAYMENT SYSTEM (INSTALLMENTS) --- 💰
     fee_total: { type: Number, default: 0 },
     fee_status: { type: String, enum: ['Not_Applicable', 'Unpaid', 'Partial', 'Paid'], default: 'Not_Applicable' },
     installments: [{

@@ -19,7 +19,7 @@ export default function AdminDashboard() {
   const [routingDoc, setRoutingDoc] = useState(null);
   const [infoDoc, setInfoDoc] = useState(null); 
   
-  // --- 🔥 NEW CUSTOM INSTALLMENT STATE 🔥 ---
+  // Custom Payment State
   const [paymentDoc, setPaymentDoc] = useState(null); 
   const [installments, setInstallments] = useState([{ amount: '' }]); 
   
@@ -69,7 +69,7 @@ export default function AdminDashboard() {
       try { await api.post(`/api/documents/${id}/forward_to_client`); fetchData(); setInfoDoc(null); } catch(e) { alert("Failed"); }
   };
 
-  // --- 🔥 NEW CUSTOM PAYMENT LOGIC 🔥 ---
+  // Payment Logic
   const handleAddInstallment = () => setInstallments([...installments, { amount: '' }]);
   const handleRemoveInstallment = (index) => setInstallments(installments.filter((_, i) => i !== index));
   const handleInstallmentChange = (index, value) => {
@@ -80,17 +80,13 @@ export default function AdminDashboard() {
 
   const handlePaymentRequest = async (e) => {
       e.preventDefault();
-      // Extract just the numbers
       const amounts = installments.map(i => Number(i.amount)).filter(a => a > 0);
-      if (amounts.length === 0) return alert("Please enter valid amounts.");
+      if (amounts.length === 0) return alert("Enter valid amounts.");
 
       try {
           await api.post(`/api/documents/${paymentDoc._id}/request_payment`, { installments: amounts });
-          alert("Payment requested & Client Notified!");
-          setPaymentDoc(null); fetchData();
-      } catch (error) { 
-          alert(error.response?.data?.error || "Failed to create payment."); 
-      }
+          alert("Fee requested!"); setPaymentDoc(null); fetchData();
+      } catch (error) { alert(error.response?.data?.error || "Failed to create payment."); }
   };
 
   const getFileUrl = (path) => path ? `http://127.0.0.1:8000/${path.replace(/\\/g, '/')}` : '#';
@@ -135,7 +131,7 @@ export default function AdminDashboard() {
                             <tbody className="divide-y divide-gray-100">
                                 {filteredDocs.map(doc => (
                                     <tr key={doc._id} className="hover:bg-gray-50">
-                                        <td className="p-4"><a href={getFileUrl(doc.file)} target="_blank" rel="noopener noreferrer" className="font-mono text-blue-600 font-bold hover:underline">{doc.tracking_id}</a><div className="text-[10px] text-gray-400">Owner: {doc.client_username}</div></td>
+                                        <td className="p-4"><a href={getFileUrl(doc.file)} target="_blank" className="font-mono text-blue-600 font-bold hover:underline">{doc.tracking_id}</a><div className="text-[10px] text-gray-400">Owner: {doc.client_username}</div></td>
                                         <td className="p-4">
                                             <div className="flex flex-col gap-1 items-start">
                                                 <span className={`px-2 py-1 rounded text-[10px] font-bold uppercase border ${doc.status === 'Completed' ? 'bg-green-50 text-green-700' : doc.status === 'Declined' ? 'bg-gray-200 text-gray-600' : 'bg-yellow-50 text-yellow-700'}`}>{doc.status.replace(/_/g, ' ')}</span>
@@ -145,7 +141,7 @@ export default function AdminDashboard() {
                                         <td className="p-4 flex justify-center gap-2">
                                             <button onClick={() => setInfoDoc(doc)} className="text-gray-400 hover:text-blue-600 text-lg p-1">ℹ️</button>
                                             
-                                            {/* 🔥 ONLY SHOW BUTTON IF NOT ESTIMATED YET 🔥 */}
+                                            {/* PAYMENT REQUEST BUTTON (HIDDEN IF ALREADY SET) */}
                                             {doc.fee_total === 0 && (
                                                 <button onClick={() => { setPaymentDoc(doc); setInstallments([{amount: ''}]); }} className="text-green-600 font-bold text-lg p-1 hover:text-green-800" title="Request Fee">💰</button>
                                             )}
@@ -194,13 +190,12 @@ export default function AdminDashboard() {
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 backdrop-blur-sm"><div className="bg-white p-8 rounded-xl w-96 animate-scale-in"><h3 className="text-xl font-bold mb-4">Route Document</h3><form onSubmit={handleRouteSubmit}><select name="dept" className="w-full border p-3 rounded-lg mb-6 bg-gray-50" required><option value="">-- Choose Dept --</option>{depts.map(d => (<option key={d._id} value={d._id}>{d.name}</option>))}</select><div className="flex justify-end gap-3"><button type="button" onClick={() => setRoutingDoc(null)} className="px-4 py-2 font-bold">Cancel</button><button type="submit" className="px-4 py-2 bg-blue-600 text-white font-bold rounded">Confirm</button></div></form></div></div>
       )}
 
-      {/* 🔥 NEW DYNAMIC PAYMENT REQUEST MODAL 🔥 */}
+      {/* DYNAMIC PAYMENT MODAL */}
       {paymentDoc && (
         <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 backdrop-blur-sm">
             <div className="bg-white p-8 rounded-xl shadow-2xl w-[400px] animate-scale-in max-h-[90vh] overflow-y-auto">
                 <h3 className="text-xl font-bold mb-2 text-gray-800">Generate Fee Request</h3>
                 <p className="text-sm text-gray-500 mb-6">For Document ID: <span className="font-mono font-bold text-blue-600">{paymentDoc.tracking_id}</span></p>
-                
                 <form onSubmit={handlePaymentRequest}>
                     <div className="space-y-3 mb-6">
                         {installments.map((inst, index) => (
@@ -215,9 +210,7 @@ export default function AdminDashboard() {
                             </div>
                         ))}
                     </div>
-
                     <button type="button" onClick={handleAddInstallment} className="text-xs font-bold text-blue-600 border border-blue-600 px-3 py-1 rounded hover:bg-blue-50 transition w-full mb-6">+ Add Another Installment</button>
-
                     <div className="flex gap-3 justify-end pt-4 border-t border-gray-100">
                         <button type="button" onClick={() => setPaymentDoc(null)} className="px-4 py-2 text-gray-600 font-bold hover:bg-gray-100 rounded">Cancel</button>
                         <button type="submit" className="px-4 py-2 bg-green-600 text-white font-bold rounded shadow hover:bg-green-700">Send Request</button>
@@ -227,45 +220,30 @@ export default function AdminDashboard() {
         </div>
       )}
 
-      {/* RETAINED FULL TIMELINE MODAL + FINANCE */}
+      {/* INFO MODAL */}
       {infoDoc && (
           <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 backdrop-blur-sm">
               <div className="bg-white p-6 rounded-xl w-[500px] shadow-2xl animate-scale-in">
                   <div className="flex justify-between items-center mb-4 border-b pb-2"><h3 className="text-lg font-bold">Document Lifecycle</h3><button onClick={() => setInfoDoc(null)} className="text-xl font-bold text-gray-400 hover:text-red-500">&times;</button></div>
-                  
                   <div className="space-y-4 text-sm">
-                      <div className="bg-blue-50 p-3 rounded-lg border border-blue-100 flex justify-between">
-                          <div><p className="text-xs font-bold text-blue-800 uppercase">Tracking ID</p><p className="font-mono text-lg font-bold text-blue-900">{infoDoc.tracking_id}</p></div>
-                          <div className="text-right"><p className="text-xs font-bold text-blue-800 uppercase">Fee Status</p><p className={`font-bold ${infoDoc.fee_status==='Paid'?'text-green-600':'text-red-500'}`}>{infoDoc.fee_status}</p></div>
-                      </div>
-
+                      <div className="bg-blue-50 p-3 rounded-lg border flex justify-between"><div><p className="text-xs font-bold uppercase">ID</p><p className="font-mono text-lg font-bold text-blue-900">{infoDoc.tracking_id}</p></div><div className="text-right"><p className="text-xs font-bold uppercase">Fee</p><p className="font-bold">{infoDoc.fee_status}</p></div></div>
                       <div className="bg-gray-50 p-4 rounded-lg border space-y-2">
                           <h4 className="text-xs font-bold text-gray-500 uppercase border-b pb-2">Timeline Events</h4>
                           <div className="flex justify-between"><span className="text-gray-600">Uploaded:</span><span className="font-mono">{infoDoc.uploaded_at?.slice(0, 16).replace('T', ' ')}</span></div>
                           <div className="flex justify-between"><span className="text-gray-600">Sent to Dept:</span><span className="font-mono">{infoDoc.sent_to_dept_at?.slice(0, 16).replace('T', ' ') || '-'}</span></div>
-                          <div className="flex justify-between pl-4 border-l-2 border-yellow-200"><span className="text-gray-600">↳ Faculty Assigned:</span><span className="font-mono text-xs">{infoDoc.assigned_to_faculty_at?.slice(0, 16).replace('T', ' ') || '-'}</span></div>
-                          <div className="flex justify-between pl-4 border-l-2 border-purple-200"><span className="text-gray-600">↳ Faculty Reported:</span><span className="font-mono text-xs">{infoDoc.faculty_processed_at?.slice(0, 16).replace('T', ' ') || '-'}</span></div>
+                          <div className="flex justify-between pl-4 border-l-2"><span className="text-gray-600">↳ Faculty:</span><span className="font-mono text-xs">{infoDoc.assigned_to_faculty_at?.slice(0, 16).replace('T', ' ') || '-'}</span></div>
+                          <div className="flex justify-between pl-4 border-l-2"><span className="text-gray-600">↳ Reported:</span><span className="font-mono text-xs">{infoDoc.faculty_processed_at?.slice(0, 16).replace('T', ' ') || '-'}</span></div>
                           <div className="flex justify-between"><span className="text-gray-600">Dept Approved:</span><span className="font-mono">{infoDoc.dept_processed_at?.slice(0, 16).replace('T', ' ') || '-'}</span></div>
                           <div className="flex justify-between border-t pt-2"><span className="text-gray-800 font-bold">Completed:</span><span className="font-mono font-bold text-green-600">{infoDoc.final_report_sent_at?.slice(0, 16).replace('T', ' ') || '-'}</span></div>
                       </div>
-
-                      {/* FINANCIAL LIFECYCLE */}
                       {infoDoc.fee_total > 0 && (
-                          <div className="bg-blue-50/50 p-3 rounded border border-blue-100">
-                              <span className="text-xs font-bold text-blue-800 uppercase block mb-2">Financial Lifecycle (₹{infoDoc.fee_total})</span>
-                              {infoDoc.installments.map((inst, idx) => (
-                                  <div key={inst._id} className="flex justify-between text-xs mt-1 border-b border-blue-50 pb-1">
-                                      <span className="text-gray-600">↳ Part {idx + 1} (₹{inst.amount}):</span>
-                                      <span className={inst.status === 'Paid' ? "font-mono font-bold text-green-600" : "font-mono font-bold text-red-500"}>
-                                          {inst.status === 'Paid' ? `PAID on ${inst.paid_at?.slice(0, 10)}` : 'PENDING'}
-                                      </span>
-                                  </div>
-                              ))}
+                          <div className="bg-blue-50/50 p-3 rounded border">
+                              <span className="text-xs font-bold block mb-2">Finance (₹{infoDoc.fee_total})</span>
+                              {infoDoc.installments.map((inst, idx) => (<div key={inst._id} className="flex justify-between text-xs mt-1 border-b pb-1"><span>Part {idx + 1}:</span><span className={inst.status==='Paid'?"text-green-600 font-bold":"text-red-500 font-bold"}>{inst.status}</span></div>))}
                           </div>
                       )}
-
-                      {infoDoc.status === 'Dept_Reported' && (<button onClick={() => handleForwardToClient(infoDoc._id)} className="w-full bg-green-600 text-white py-3 rounded-lg font-bold shadow hover:bg-green-700 mt-2">Forward Final Report to Client</button>)}
-                      <button onClick={() => setInfoDoc(null)} className="w-full bg-gray-100 py-2 rounded font-bold hover:bg-gray-200">Close</button>
+                      {infoDoc.status === 'Dept_Reported' && (<button onClick={() => handleForwardToClient(infoDoc._id)} className="w-full bg-green-600 text-white py-3 rounded-lg font-bold mt-2">Forward Final Report to Client</button>)}
+                      <button onClick={() => setInfoDoc(null)} className="w-full bg-gray-100 py-2 rounded font-bold">Close</button>
                   </div>
               </div>
           </div>

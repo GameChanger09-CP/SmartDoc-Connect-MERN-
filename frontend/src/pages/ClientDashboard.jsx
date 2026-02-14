@@ -2,13 +2,10 @@ import React, { useState, useEffect } from 'react';
 import api from '../api';
 import Navbar from '../components/Navbar';
 
-// --- 🔥 FIX: DYNAMICALLY LOAD RAZORPAY WITHOUT TOUCHING HTML 🔥 ---
+// --- RAZORPAY LOADER (Fixes "Not Loaded" Error) ---
 const loadRazorpay = () => {
     return new Promise((resolve) => {
-        if (window.Razorpay) {
-            resolve(true);
-            return;
-        }
+        if (window.Razorpay) { resolve(true); return; }
         const script = document.createElement('script');
         script.src = 'https://checkout.razorpay.com/v1/checkout.js';
         script.onload = () => resolve(true);
@@ -47,26 +44,15 @@ export default function ClientDashboard() {
     catch (error) { alert("Upload Failed."); }
   };
 
-  // --- 🔥 UPDATED RAZORPAY CHECKOUT LOGIC 🔥 ---
   const handleCheckout = async (doc, installment) => {
-      // Wait for the script to load automatically
       const isLoaded = await loadRazorpay();
-      
-      if (!isLoaded) {
-          return alert("Razorpay SDK failed to load. Please verify your internet connection.");
-      }
+      if (!isLoaded) return alert("Razorpay failed to load. Check connection.");
 
       try {
-          // 1. Fetch Key securely from backend
-          const res = await api.get('/api/documents/get-razorpay-key');
-          const key = res.data.key;
-          
-          if (!key) throw new Error("Razorpay key missing from backend.");
-
-          // 2. Configure Razorpay Options
+          const { data: { key } } = await api.get('/api/documents/get-razorpay-key');
           const options = {
               key: key,
-              amount: Math.round(installment.amount * 100), // MUST be integer in paise
+              amount: Math.round(installment.amount * 100), // Integer in Paise
               currency: "INR",
               name: "SmartDoc Connect",
               description: `Verification Fee: ${doc.tracking_id}`,
@@ -80,28 +66,14 @@ export default function ClientDashboard() {
                           razorpay_payment_id: response.razorpay_payment_id,
                           razorpay_signature: response.razorpay_signature
                       });
-                      alert("Payment Successful! ✅"); 
-                      fetchDocs();
-                  } catch (err) { 
-                      console.error("Verification Error:", err);
-                      alert("Payment verification failed on server. Contact support."); 
-                  }
+                      alert("Payment Successful! ✅"); fetchDocs();
+                  } catch (err) { alert("Verification failed."); }
               },
               theme: { color: "#2563EB" }
           };
-
-          // 3. Open Popup
           const rzp = new window.Razorpay(options);
-          rzp.on('payment.failed', function (response){
-              console.error("Payment Failed event:", response.error);
-              alert(`Payment Failed: ${response.error.description}`);
-          });
           rzp.open();
-          
-      } catch (err) { 
-          console.error("Initiation Error:", err);
-          alert(`Could not initiate payment: ${err.message || 'Server connection error.'}`); 
-      }
+      } catch (err) { alert("Payment init failed."); }
   };
 
   const getFileUrl = (path) => path ? `http://127.0.0.1:8000/${path.replace(/\\/g, '/')}` : '#';
@@ -124,12 +96,11 @@ export default function ClientDashboard() {
 
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             {filteredDocs.map(doc => (
-                <div key={doc._id} className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 flex flex-col h-full relative overflow-hidden">
+                <div key={doc._id} className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 flex flex-col h-full relative overflow-hidden group hover:shadow-xl transition duration-300">
                     <div className={`absolute top-0 left-0 w-1 h-full ${doc.status === 'Completed' ? 'bg-green-500' : 'bg-yellow-500'}`}></div>
                     <div className="flex justify-between items-start mb-4"><span className="font-mono text-xs font-bold uppercase">{doc.tracking_id}</span><span className={`px-2 py-1 rounded text-[10px] font-bold uppercase border ${doc.status === 'Completed' ? 'bg-green-50 text-green-700' : 'bg-yellow-50 text-yellow-700'}`}>{doc.status.replace(/_/g, ' ')}</span></div>
                     <h4 className="font-bold mb-2">Application Document</h4><p className="text-xs text-gray-500 mb-4 flex-grow">Uploaded: {doc.uploaded_at?.slice(0, 10)}</p>
 
-                    {/* PAYMENT BUTTONS IN CARD */}
                     {doc.fee_total > 0 && (
                         <div className="bg-slate-50 p-3 rounded-lg border border-slate-200 mb-4">
                             <div className="flex justify-between items-center mb-2 border-b border-slate-200 pb-2">
@@ -151,11 +122,9 @@ export default function ClientDashboard() {
                     </div>
                 </div>
             ))}
-            {filteredDocs.length === 0 && <div className="col-span-full text-center text-gray-400 italic py-10">No documents match this filter.</div>}
         </div>
       </div>
 
-      {/* SIMPLIFIED INFO MODAL */}
       {infoDoc && (
         <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 backdrop-blur-sm">
             <div className="bg-white p-6 rounded-xl w-[500px] shadow-2xl animate-scale-in">
@@ -166,7 +135,6 @@ export default function ClientDashboard() {
                         <div className="flex items-center gap-4"><div className="w-10 h-10 rounded-full bg-green-100 flex items-center justify-center text-xl">📤</div><div><p className="font-bold">Received</p><p className="text-xs">{infoDoc.uploaded_at?.slice(0, 16).replace('T', ' ')}</p></div></div>
                         <div className="flex items-center gap-4"><div className={`w-10 h-10 rounded-full flex items-center justify-center text-xl ${infoDoc.status === 'Completed' ? 'bg-green-100' : 'bg-yellow-100 animate-pulse'}`}>{infoDoc.status === 'Completed' ? '✅' : '⚙️'}</div><div><p className="font-bold">Processing</p><p className="text-xs">{infoDoc.status === 'Completed' ? 'Verification Complete' : 'Under review by team.'}</p></div></div>
                     </div>
-
                     {infoDoc.fee_total > 0 && (
                         <div className="bg-slate-50 p-3 rounded border">
                             <span className="text-xs font-bold uppercase block mb-1">Financial History</span>
