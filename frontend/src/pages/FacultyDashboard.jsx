@@ -38,7 +38,7 @@ export default function FacultyDashboard() {
   const getFileUrl = (path) => path ? `http://127.0.0.1:8000/${path.replace(/\\/g, '/')}` : '#';
 
   return (
-    <div className="min-h-screen bg-gray-50 font-sans pb-12">
+    <div className="min-h-screen bg-slate-50 font-sans pb-12">
       <Navbar />
       <main className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-10">
         <div className="mb-10 flex justify-between items-end gap-4 border-b pb-6">
@@ -55,7 +55,7 @@ export default function FacultyDashboard() {
                     <div className="p-6 border-b flex justify-between items-center bg-gray-50/50">
                         <div className="flex items-center gap-3">
                             <span className="bg-blue-100 text-blue-700 text-xs font-bold px-2 py-1 rounded">TASK</span>
-                            <a href={getFileUrl(doc.file)} target="_blank" className="text-xl font-mono font-bold text-gray-900 hover:text-blue-600">{doc.tracking_id}</a>
+                            <a href={getFileUrl(doc.file)} target="_blank" rel="noreferrer" className="text-xl font-mono font-bold text-gray-900 hover:text-blue-600">{doc.tracking_id}</a>
                             <button onClick={() => setInfoDoc(doc)} className="text-gray-400 hover:text-blue-600 text-lg">ℹ️</button>
                         </div>
                         <span className="px-4 py-1.5 rounded-full text-xs font-bold bg-gray-100 border">{doc.status.replace(/_/g, ' ')}</span>

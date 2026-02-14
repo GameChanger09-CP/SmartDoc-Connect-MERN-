@@ -7,10 +7,10 @@ const userSchema = new mongoose.Schema({
     password: { type: String, required: true },
     role: { type: String, enum: ['Client', 'Dept_Admin', 'Main_Admin', 'Faculty'], default: 'Client' },
     kyc_status: { type: String, enum: ['Pending', 'Verified', 'Rejected'], default: 'Pending' },
-    gov_id: { type: String, default: null },
+    gov_id: { type: String, default: null }, // Path to uploaded ID
     department: { type: mongoose.Schema.Types.ObjectId, ref: 'Department', default: null },
     
-    // 🔥 NEW: Password Reset Fields
+    // Password Reset Fields
     resetPasswordToken: String,
     resetPasswordExpire: Date
 });
@@ -44,7 +44,7 @@ const documentSchema = new mongoose.Schema({
     is_frozen: { type: Boolean, default: false },
     dept_report: { type: String, default: null },
 
-    // 💰 --- PAYMENT SYSTEM (INSTALLMENTS) --- 💰
+    // 💰 PAYMENT SYSTEM
     fee_total: { type: Number, default: 0 },
     fee_status: { type: String, enum: ['Not_Applicable', 'Unpaid', 'Partial', 'Paid'], default: 'Not_Applicable' },
     installments: [{
@@ -66,7 +66,6 @@ const documentSchema = new mongoose.Schema({
 }, { toJSON: { virtuals: true }, toObject: { virtuals: true } });
 
 documentSchema.virtual('client_username').get(function() { return this.user ? this.user.username : 'Unknown'; });
-documentSchema.virtual('client_id').get(function() { return this.user ? this.user._id : null; });
 
 // --- ACTIVITY LOG MODEL ---
 const activityLogSchema = new mongoose.Schema({
@@ -83,4 +82,4 @@ module.exports = {
     Department: mongoose.model('Department', departmentSchema),
     Document: mongoose.model('Document', documentSchema),
     ActivityLog: mongoose.model('ActivityLog', activityLogSchema)
-};
+};   
