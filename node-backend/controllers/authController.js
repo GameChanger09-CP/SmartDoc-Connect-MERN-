@@ -61,46 +61,35 @@ exports.updateProfile = async (req, res) => {
     }
 };
 
-// --- 🔥 STEP 1: FORGOT PASSWORD (SEND TOKEN) ---
+// --- FORGOT PASSWORD (STEP 1) ---
 exports.forgotPassword = async (req, res) => {
     const { email } = req.body;
     try {
-        // 1. Check if user exists
         const user = await User.findOne({ email });
-        if (!user) {
-            return res.status(404).json({ error: "This email is not registered with us." });
-        }
+        if (!user) return res.status(404).json({ error: "Invalid User: Email not found." });
 
-        // 2. Generate Reset Token
         const resetToken = crypto.randomBytes(20).toString('hex');
         user.resetPasswordToken = crypto.createHash('sha256').update(resetToken).digest('hex');
-        user.resetPasswordExpire = Date.now() + 10 * 60 * 1000; // 10 Minutes
+        user.resetPasswordExpire = Date.now() + 10 * 60 * 1000; // 10 Min
         await user.save();
 
-        // 3. Clear Instructions in Email
         const message = `
-            <h3>Password Reset Request</h3>
-            <p>You requested to reset your password. Please copy the token below:</p>
-            <h2 style="background: #f3f4f6; padding: 10px; display: inline-block; letter-spacing: 2px;">${resetToken}</h2>
-            <p>Return to the application, select <b>"I have a token"</b> (or continue if the screen is open), and enter this code along with your new password.</p>
-            <p><small>(This token expires in 10 minutes)</small></p>
+            <h3>Password Reset</h3>
+            <p>Your token: <b>${resetToken}</b></p>
+            <p>Copy this token and enter it in the app to reset your password.</p>
         `;
-
-        await sendMail(user.email, "Your Password Reset Token", message);
+        await sendMail(user.email, "Password Reset Token", message);
         
         res.json({ status: "Email sent" });
     } catch (error) {
-        console.error(error);
         res.status(500).json({ error: "Email could not be sent" });
     }
 };
 
-// --- 🔥 STEP 2: RESET PASSWORD (VERIFY TOKEN) ---
+// --- RESET PASSWORD (STEP 2) ---
 exports.resetPassword = async (req, res) => {
     try {
-        // Expect token in body now (easier for manual entry)
         const { token, password } = req.body;
-
         if(!token || !password) return res.status(400).json({ error: "Token and Password required" });
 
         const resetPasswordToken = crypto.createHash('sha256').update(token).digest('hex');
@@ -117,7 +106,7 @@ exports.resetPassword = async (req, res) => {
         user.resetPasswordExpire = undefined;
         await user.save();
 
-        res.json({ status: "Password Updated Successfully" });
+        res.json({ status: "Password Updated" });
     } catch (error) {
         res.status(500).json({ error: "Server Error" });
     }

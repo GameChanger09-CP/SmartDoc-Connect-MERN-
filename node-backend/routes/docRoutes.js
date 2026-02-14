@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const docController = require('../controllers/docController');
-const paymentController = require('../controllers/paymentController'); // NEW
+const paymentController = require('../controllers/paymentController');
 const auth = require('../middlewares/auth');
 const upload = require('../middlewares/upload');
 
@@ -16,9 +16,8 @@ router.post('/:id/assign_faculty', auth, docController.assignToFaculty);
 router.post('/:id/approve_faculty_report', auth, docController.approveFacultyReport);
 router.post('/:id/return', auth, docController.returnDoc);
 
-// 💰 Payment Routes
 router.get('/get-razorpay-key', auth, paymentController.getKey);
 router.post('/:id/request_payment', auth, paymentController.requestPayment);
 router.post('/verify_payment', auth, paymentController.verifyPayment);
 
-module.exports = router;
+module.exports = router;    

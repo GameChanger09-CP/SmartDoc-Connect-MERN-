@@ -8,7 +8,7 @@ export default function Login() {
   
   // Forgot Password State
   const [showForgot, setShowForgot] = useState(false);
-  const [forgotStep, setForgotStep] = useState(1); // 1 = Email, 2 = Token
+  const [forgotStep, setForgotStep] = useState(1); // 1 = Email, 2 = Token + Password
   const [resetData, setResetData] = useState({ email: '', token: '', newPassword: '' });
   const [resetMsg, setResetMsg] = useState('');
 
@@ -30,20 +30,21 @@ export default function Login() {
     }
   };
 
-  // Step 1: Send Email
+  // 🔥 STEP 1: Verify User & Send Email
   const handleForgotRequest = async (e) => {
       e.preventDefault();
       setResetMsg('');
       try {
           await api.post('/api/auth/forgot-password', { email: resetData.email });
           setResetMsg("✅ Token sent to your email!");
-          setForgotStep(2); // Move to next step
+          setForgotStep(2); // Proceed to Step 2
       } catch (e) { 
-          setResetMsg(`❌ ${e.response?.data?.error || "Error sending email"}`); 
+          // If email not in DB, backend returns 404
+          setResetMsg(`❌ ${e.response?.data?.error || "Invalid User"}`); 
       }
   };
 
-  // Step 2: Verify Token & Reset
+  // 🔥 STEP 2: Verify Token & Change Password
   const handleResetSubmit = async (e) => {
       e.preventDefault();
       setResetMsg('');
@@ -52,11 +53,12 @@ export default function Login() {
               token: resetData.token, 
               password: resetData.newPassword 
           });
-          alert("Password Reset Successful! You can now login.");
+          alert("Success! Password Changed. Please Login.");
           setShowForgot(false);
           setForgotStep(1);
           setResetData({ email: '', token: '', newPassword: '' });
       } catch (e) {
+          // If token invalid, backend returns 400
           setResetMsg(`❌ ${e.response?.data?.error || "Invalid Token"}`);
       }
   };
@@ -87,43 +89,41 @@ export default function Login() {
         </form>
 
         <div className="mt-6 flex justify-between text-sm text-blue-200">
-            <button onClick={() => { setShowForgot(true); setForgotStep(1); }} className="hover:text-white hover:underline">Forgot Password?</button>
+            <button onClick={() => { setShowForgot(true); setForgotStep(1); setResetMsg(''); }} className="hover:text-white hover:underline">Forgot Password?</button>
             <Link to="/signup" className="font-bold text-white hover:text-blue-300">Create Account</Link>
         </div>
       </div>
 
-      {/* --- FORGOT PASSWORD 2-STEP MODAL --- */}
+      {/* --- FORGOT PASSWORD MODAL (2-STEP) --- */}
       {showForgot && (
           <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4">
               <div className="bg-white p-6 rounded-2xl w-full max-w-sm animate-scale-in shadow-2xl">
-                  <h3 className="text-xl font-bold text-gray-800 mb-2">Reset Password</h3>
+                  <h3 className="text-xl font-bold text-gray-800 mb-2">
+                      {forgotStep === 1 ? 'Find Your Account' : 'Verify & Reset'}
+                  </h3>
                   
-                  {resetMsg && <div className={`mb-3 p-2 text-xs rounded ${resetMsg.includes('✅') ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>{resetMsg}</div>}
+                  {resetMsg && <div className={`mb-3 p-2 text-xs rounded font-bold ${resetMsg.includes('✅') ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>{resetMsg}</div>}
 
                   {forgotStep === 1 ? (
                       <form onSubmit={handleForgotRequest}>
-                          <p className="text-sm text-gray-500 mb-4">Enter your registered email. We'll verify it and send you a secure token.</p>
+                          <p className="text-sm text-gray-500 mb-4">Enter your registered email address.</p>
                           <label className="block text-xs font-bold text-gray-500 mb-1">Email Address</label>
-                          <input type="email" required className="w-full border p-3 rounded-lg mb-4" placeholder="name@example.com" value={resetData.email} onChange={e => setResetData({...resetData, email: e.target.value})} />
+                          <input type="email" required className="w-full border p-3 rounded-lg mb-4 focus:ring-2 focus:ring-blue-500 outline-none" placeholder="name@example.com" value={resetData.email} onChange={e => setResetData({...resetData, email: e.target.value})} />
                           
                           <div className="flex gap-2 justify-end">
                               <button type="button" onClick={() => setShowForgot(false)} className="px-4 py-2 text-gray-500 font-bold">Cancel</button>
                               <button className="px-4 py-2 bg-blue-600 text-white rounded-lg font-bold hover:bg-blue-700">Send Token</button>
                           </div>
-                          
-                          <div className="mt-4 text-center">
-                              <button type="button" onClick={() => setForgotStep(2)} className="text-xs text-blue-600 hover:underline">Already have a token?</button>
-                          </div>
                       </form>
                   ) : (
                       <form onSubmit={handleResetSubmit}>
-                          <p className="text-sm text-gray-500 mb-4">Enter the token sent to <b>{resetData.email}</b> and your new password.</p>
+                          <p className="text-sm text-gray-500 mb-4">Enter the token sent to <b>{resetData.email}</b>.</p>
                           
                           <label className="block text-xs font-bold text-gray-500 mb-1">Reset Token</label>
-                          <input type="text" required className="w-full border p-3 rounded-lg mb-3 font-mono" placeholder="Paste token here" value={resetData.token} onChange={e => setResetData({...resetData, token: e.target.value})} />
+                          <input type="text" required className="w-full border p-3 rounded-lg mb-3 font-mono text-center tracking-widest bg-gray-50" placeholder="TOKEN" value={resetData.token} onChange={e => setResetData({...resetData, token: e.target.value})} />
                           
                           <label className="block text-xs font-bold text-gray-500 mb-1">New Password</label>
-                          <input type="password" required className="w-full border p-3 rounded-lg mb-4" placeholder="New strong password" value={resetData.newPassword} onChange={e => setResetData({...resetData, newPassword: e.target.value})} />
+                          <input type="password" required className="w-full border p-3 rounded-lg mb-4" placeholder="New Password" value={resetData.newPassword} onChange={e => setResetData({...resetData, newPassword: e.target.value})} />
 
                           <div className="flex gap-2 justify-end">
                               <button type="button" onClick={() => setForgotStep(1)} className="px-4 py-2 text-gray-500 font-bold">Back</button>

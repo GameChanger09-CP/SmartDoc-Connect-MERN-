@@ -2,11 +2,9 @@ import React, { useEffect, useState } from 'react';
 import api from '../api';
 
 export default function ProfileModal({ onClose, targetUser = null }) {
-  const [activeTab, setActiveTab] = useState('history'); // 'history' or 'edit'
+  const [activeTab, setActiveTab] = useState('history');
   const [logs, setLogs] = useState([]);
   const [loading, setLoading] = useState(true);
-  
-  // Edit Profile State
   const [editData, setEditData] = useState({ username: '', email: '', password: '' });
 
   const username = targetUser ? targetUser.username : localStorage.getItem('username');
@@ -38,8 +36,6 @@ export default function ProfileModal({ onClose, targetUser = null }) {
   return (
     <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
       <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl overflow-hidden flex flex-col max-h-[85vh] animate-scale-in">
-        
-        {/* Header */}
         <div className="bg-gradient-to-r from-slate-800 to-slate-900 p-6 text-white flex justify-between items-center">
           <div className="flex items-center gap-4">
             <div className="w-16 h-16 bg-white/10 rounded-full flex items-center justify-center text-3xl border-2 border-white/20">
@@ -53,7 +49,6 @@ export default function ProfileModal({ onClose, targetUser = null }) {
           <button onClick={onClose} className="text-white/60 hover:text-white text-3xl">&times;</button>
         </div>
 
-        {/* Tabs */}
         {!targetUser && (
             <div className="flex border-b">
                 <button onClick={() => setActiveTab('history')} className={`flex-1 py-3 text-sm font-bold ${activeTab === 'history' ? 'border-b-2 border-blue-600 text-blue-600' : 'text-gray-500'}`}>History</button>
@@ -61,9 +56,7 @@ export default function ProfileModal({ onClose, targetUser = null }) {
             </div>
         )}
 
-        {/* Content */}
         <div className="p-6 bg-gray-50 flex-1 overflow-hidden flex flex-col">
-          
           {activeTab === 'history' ? (
               <div className="flex-1 overflow-y-auto space-y-3 custom-scrollbar">
                 {loading ? <p className="text-center text-gray-400">Loading...</p> : 
@@ -81,18 +74,9 @@ export default function ProfileModal({ onClose, targetUser = null }) {
               </div>
           ) : (
               <form onSubmit={handleUpdateProfile} className="space-y-4">
-                  <div>
-                      <label className="block text-xs font-bold text-gray-500 uppercase mb-1">New Username</label>
-                      <input className="w-full border p-2 rounded" placeholder={username} onChange={e => setEditData({...editData, username: e.target.value})} />
-                  </div>
-                  <div>
-                      <label className="block text-xs font-bold text-gray-500 uppercase mb-1">New Email</label>
-                      <input className="w-full border p-2 rounded" placeholder="New Email" type="email" onChange={e => setEditData({...editData, email: e.target.value})} />
-                  </div>
-                  <div>
-                      <label className="block text-xs font-bold text-gray-500 uppercase mb-1">New Password</label>
-                      <input className="w-full border p-2 rounded" placeholder="New Password" type="password" onChange={e => setEditData({...editData, password: e.target.value})} />
-                  </div>
+                  <div><label className="block text-xs font-bold text-gray-500 uppercase mb-1">New Username</label><input className="w-full border p-2 rounded" placeholder={username} onChange={e => setEditData({...editData, username: e.target.value})} /></div>
+                  <div><label className="block text-xs font-bold text-gray-500 uppercase mb-1">New Email</label><input className="w-full border p-2 rounded" placeholder="New Email" type="email" onChange={e => setEditData({...editData, email: e.target.value})} /></div>
+                  <div><label className="block text-xs font-bold text-gray-500 uppercase mb-1">New Password</label><input className="w-full border p-2 rounded" placeholder="New Password" type="password" onChange={e => setEditData({...editData, password: e.target.value})} /></div>
                   <button className="w-full bg-blue-600 text-white py-2 rounded font-bold hover:bg-blue-700">Update & Logout</button>
               </form>
           )}
