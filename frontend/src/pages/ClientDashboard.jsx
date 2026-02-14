@@ -2,7 +2,18 @@ import React, { useState, useEffect } from 'react';
 import api from '../api';
 import Navbar from '../components/Navbar';
 
-// --- DYNAMIC RAZORPAY LOADER ---
+// --- HELPER: FORMAT DATE TO IST ---
+const formatIST = (dateString) => {
+    if (!dateString) return '-';
+    const date = new Date(dateString);
+    return date.toLocaleString('en-IN', {
+        timeZone: 'Asia/Kolkata',
+        day: '2-digit', month: 'short', year: 'numeric',
+        hour: '2-digit', minute: '2-digit', hour12: true
+    });
+};
+
+// --- RAZORPAY LOADER ---
 const loadRazorpay = () => {
     return new Promise((resolve) => {
         if (window.Razorpay) { resolve(true); return; }
@@ -29,7 +40,7 @@ export default function ClientDashboard() {
 
   useEffect(() => { fetchDocs(); }, []);
 
-  // --- 🔥 PRIVACY STATUS MAPPING 🔥 ---
+  // --- PRIVACY STATUS MAPPING ---
   const getClientStatus = (status) => {
       const activeStates = ['Review_Required', 'In_Progress', 'With_Faculty', 'Faculty_Reported', 'Dept_Reported', 'Returned_To_Main'];
       if (activeStates.includes(status)) return 'In Progress';
@@ -43,8 +54,8 @@ export default function ClientDashboard() {
       const s = getClientStatus(status);
       if (s === 'Completed') return 'bg-green-100 text-green-700 border-green-200';
       if (s === 'Declined') return 'bg-red-100 text-red-700 border-red-200';
-      if (s === 'On Hold') return 'bg-slate-100 text-slate-700 border-slate-200';
-      return 'bg-blue-50 text-blue-700 border-blue-200'; // In Progress
+      if (s === 'On Hold') return 'bg-gray-100 text-gray-700 border-gray-200';
+      return 'bg-blue-50 text-blue-700 border-blue-200';
   };
 
   const filteredDocs = docs.filter(doc => {
@@ -58,7 +69,7 @@ export default function ClientDashboard() {
     e.preventDefault();
     if(!file) return alert("Please select a file");
     const formData = new FormData(); formData.append('file', file);
-    try { await api.post('/api/documents/', formData); fetchDocs(); setFile(null); alert('Uploaded!'); } 
+    try { await api.post('/api/documents/', formData); fetchDocs(); setFile(null); alert('Uploaded successfully!'); } 
     catch (error) { alert("Upload Failed."); }
   };
 
@@ -84,7 +95,7 @@ export default function ClientDashboard() {
                           razorpay_payment_id: response.razorpay_payment_id,
                           razorpay_signature: response.razorpay_signature
                       });
-                      alert("Payment Successful!"); fetchDocs();
+                      alert("Payment Successful! ✅"); fetchDocs();
                   } catch (err) { alert("Verification failed."); }
               },
               theme: { color: "#2563EB" }
@@ -99,7 +110,7 @@ export default function ClientDashboard() {
   return (
     <div className="min-h-screen bg-slate-50 font-sans">
       <Navbar />
-      <div className="max-w-6xl mx-auto p-6 py-10">
+      <div className="max-w-7xl mx-auto p-6 py-10">
         
         <div className="mb-10 flex justify-between items-end">
             <div><h1 className="text-3xl font-extrabold text-slate-900">My Documents</h1><p className="text-slate-500 mt-1">Track status and pay fees.</p></div>
@@ -126,7 +137,7 @@ export default function ClientDashboard() {
                     </div>
                     
                     <h4 className="font-bold mb-2">Application Document</h4>
-                    <p className="text-xs text-slate-500 mb-4 flex-grow">Uploaded: {doc.uploaded_at?.slice(0, 10)}</p>
+                    <p className="text-xs text-slate-500 mb-4 flex-grow">Uploaded: {formatIST(doc.uploaded_at)}</p>
 
                     {/* PAYMENT BUTTONS */}
                     {doc.fee_total > 0 && (
@@ -160,7 +171,7 @@ export default function ClientDashboard() {
         </div>
       </div>
 
-      {/* INFO MODAL - USES PRIVACY STATUS */}
+      {/* INFO MODAL - USES PRIVACY STATUS & IST */}
       {infoDoc && (
         <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 backdrop-blur-sm p-4">
             <div className="bg-white p-6 rounded-xl w-full max-w-md animate-scale-in shadow-2xl">
@@ -171,7 +182,10 @@ export default function ClientDashboard() {
                     <div className="bg-slate-50 p-6 rounded-lg border space-y-6">
                         <div className="flex items-center gap-4">
                             <div className="w-10 h-10 rounded-full bg-green-100 flex items-center justify-center text-xl">📤</div>
-                            <div><p className="font-bold">Received</p><p className="text-xs">{infoDoc.uploaded_at?.slice(0, 16).replace('T', ' ')}</p></div>
+                            <div>
+                                <p className="font-bold">Received</p>
+                                <p className="text-xs text-slate-500">{formatIST(infoDoc.uploaded_at)}</p>
+                            </div>
                         </div>
                         <div className="flex items-center gap-4">
                             <div className={`w-10 h-10 rounded-full flex items-center justify-center text-xl ${infoDoc.status === 'Completed' ? 'bg-green-100' : 'bg-yellow-100 animate-pulse'}`}>{infoDoc.status === 'Completed' ? '✅' : '⚙️'}</div>
@@ -189,7 +203,7 @@ export default function ClientDashboard() {
                             {infoDoc.installments.map((inst, idx) => (
                                 <div key={inst._id} className="flex justify-between text-xs mt-1 border-b pb-1">
                                     <span>Part {idx + 1} (₹{inst.amount})</span>
-                                    <span className={inst.status==='Paid'?"text-green-600 font-bold":"text-red-500 font-bold"}>{inst.status === 'Paid' ? `Paid: ${inst.paid_at?.slice(0,10)}` : 'Unpaid'}</span>
+                                    <span className={inst.status==='Paid'?"text-green-600 font-bold":"text-red-500 font-bold"}>{inst.status === 'Paid' ? `Paid: ${formatIST(inst.paid_at)}` : 'Unpaid'}</span>
                                 </div>
                             ))}
                         </div>

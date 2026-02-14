@@ -1,6 +1,17 @@
 import React, { useEffect, useState } from 'react';
 import api from '../api';
 
+// --- HELPER: FORMAT DATE TO IST ---
+const formatIST = (dateString) => {
+    if (!dateString) return '-';
+    const date = new Date(dateString);
+    return date.toLocaleString('en-IN', {
+        timeZone: 'Asia/Kolkata',
+        day: '2-digit', month: 'short', year: 'numeric',
+        hour: '2-digit', minute: '2-digit', hour12: true
+    });
+};
+
 export default function ProfileModal({ onClose, targetUser = null }) {
   const [activeTab, setActiveTab] = useState('history');
   const [logs, setLogs] = useState([]);
@@ -65,9 +76,10 @@ export default function ProfileModal({ onClose, targetUser = null }) {
                   <div key={log._id} className="bg-white p-4 rounded-xl border border-gray-100 shadow-sm flex gap-3">
                     <div className="mt-1"><div className="w-2 h-2 rounded-full bg-blue-500"></div></div>
                     <div>
-                        <p className="text-sm font-bold text-gray-800">{log.action}</p>
-                        <p className="text-xs text-gray-500 mt-1">{log.details}</p>
-                        <p className="text-[10px] text-gray-400 mt-2 font-mono">{log.timestamp?.replace('T', ' ').slice(0, 16)}</p>
+                        <p className="text-sm font-bold text-slate-800">{log.action}</p>
+                        <p className="text-xs text-slate-500 mt-1">{log.details}</p>
+                        {/* 🔥 IST TIME 🔥 */}
+                        <p className="text-[10px] text-slate-400 mt-2 font-mono">{formatIST(log.timestamp)}</p>
                     </div>
                   </div>
                 ))}
