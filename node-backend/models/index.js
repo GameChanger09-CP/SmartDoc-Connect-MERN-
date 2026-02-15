@@ -7,10 +7,8 @@ const userSchema = new mongoose.Schema({
     password: { type: String, required: true },
     role: { type: String, enum: ['Client', 'Dept_Admin', 'Main_Admin', 'Faculty'], default: 'Client' },
     kyc_status: { type: String, enum: ['Pending', 'Verified', 'Rejected'], default: 'Pending' },
-    gov_id: { type: String, default: null }, // Path to uploaded ID
+    gov_id: { type: String, default: null },
     department: { type: mongoose.Schema.Types.ObjectId, ref: 'Department', default: null },
-    
-    // Password Reset Fields
     resetPasswordToken: String,
     resetPasswordExpire: Date
 });
@@ -44,7 +42,18 @@ const documentSchema = new mongoose.Schema({
     is_frozen: { type: Boolean, default: false },
     dept_report: { type: String, default: null },
 
-    // 💰 PAYMENT SYSTEM
+    // 🔥 NEW: CURRENT VISIBLE REMARK 🔥
+    latest_remark: { type: String, default: "No remarks yet." },
+
+    // HISTORY LOG
+    notes: [{
+        sender: String,
+        role: String,
+        message: String,
+        timestamp: { type: Date, default: Date.now }
+    }],
+
+    // PAYMENTS
     fee_total: { type: Number, default: 0 },
     fee_status: { type: String, enum: ['Not_Applicable', 'Unpaid', 'Partial', 'Paid'], default: 'Not_Applicable' },
     installments: [{
@@ -82,4 +91,4 @@ module.exports = {
     Department: mongoose.model('Department', departmentSchema),
     Document: mongoose.model('Document', documentSchema),
     ActivityLog: mongoose.model('ActivityLog', activityLogSchema)
-};   
+};

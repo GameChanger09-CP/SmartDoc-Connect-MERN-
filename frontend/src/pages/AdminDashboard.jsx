@@ -37,6 +37,9 @@ export default function AdminDashboard() {
   
   // Forms
   const [newUser, setNewUser] = useState({ username: '', email: '', password: '', role: 'Client' });
+  
+  // 🔥 NEW: NOTES STATE FOR ROUTING 🔥
+  const [actionNote, setActionNote] = useState("");
 
   // --- DATA FETCHING ---
   const fetchData = async () => {
@@ -87,51 +90,45 @@ export default function AdminDashboard() {
   // --- ACTION HANDLERS ---
   const handleUserAction = async (id, action) => {
     if(!window.confirm(`Confirm ${action}?`)) return;
-    try { 
-        await api.post(`/api/users/${id}/${action}`); 
-        fetchData(); 
-    } catch (error) { alert("Action failed."); }
+    try { await api.post(`/api/users/${id}/${action}`); fetchData(); } catch (error) { alert("Action failed."); }
   };
 
   const handleCreateUser = async (e) => {
     e.preventDefault();
-    try { 
-        await api.post('/api/users/', newUser); 
-        alert(`✅ User ${newUser.username} created!`); 
-        setNewUser({ username: '', email: '', password: '', role: 'Client' }); 
-        fetchData(); 
-    } catch (error) { alert("Failed. Username might exist."); }
+    try { await api.post('/api/users/', newUser); alert(`✅ User ${newUser.username} created!`); setNewUser({ username: '', email: '', password: '', role: 'Client' }); fetchData(); } catch (error) { alert("Failed. Username might exist."); }
   };
 
-  const toggleFreeze = async (id) => { 
-      try { await api.post(`/api/documents/${id}/freeze`); fetchData(); } 
-      catch (e) { alert("Freeze failed"); } 
-  };
+  const toggleFreeze = async (id) => { try { await api.post(`/api/documents/${id}/freeze`); fetchData(); } catch (e) { alert("Freeze failed"); } };
   
   const declineDoc = async (id) => { 
-      if(!window.confirm("Permanently Decline this document?")) return;
-      try { await api.post(`/api/documents/${id}/decline`); fetchData(); } 
-      catch (e) { alert("Decline failed"); } 
+      // 🔥 Ask for Remark before Declining 🔥
+      const note = window.prompt("Please enter a reason for declining:");
+      if(note === null) return; // Cancelled
+      
+      try { 
+          await api.post(`/api/documents/${id}/decline`, { note }); 
+          fetchData(); 
+      } catch (e) { alert("Decline failed"); } 
   };
   
+  // 🔥 UPDATED: ROUTE WITH NOTE 🔥
   const handleRouteSubmit = async (e) => {
     e.preventDefault();
-    const deptId = e.target.dept.value;
     try { 
-        await api.post(`/api/documents/${routingDoc._id}/route_to`, { department_id: deptId }); 
-        alert("Routed!"); 
+        await api.post(`/api/documents/${routingDoc._id}/route_to`, { 
+            department_id: e.target.dept.value,
+            note: actionNote // Send the text area content
+        }); 
+        alert("Document Routed Successfully!"); 
         setRoutingDoc(null); 
+        setActionNote(""); 
         fetchData(); 
-    } catch (error) { alert("Failed."); }
+    } catch (error) { alert("Failed to route."); }
   };
 
   const handleForwardToClient = async (id) => {
       if(!window.confirm("Forward Report to Client?")) return;
-      try { 
-          await api.post(`/api/documents/${id}/forward_to_client`); 
-          fetchData(); 
-          setInfoDoc(null); 
-      } catch(e) { alert("Failed"); }
+      try { await api.post(`/api/documents/${id}/forward_to_client`); fetchData(); setInfoDoc(null); } catch(e) { alert("Failed"); }
   };
 
   // --- PAYMENT LOGIC ---
@@ -151,9 +148,7 @@ export default function AdminDashboard() {
       try {
           await api.post(`/api/documents/${paymentDoc._id}/request_payment`, { installments: amounts });
           alert("Payment requested & Client Notified!");
-          setPaymentDoc(null); 
-          setInstallments([{ amount: '' }]); 
-          fetchData();
+          setPaymentDoc(null); setInstallments([{ amount: '' }]); fetchData();
       } catch (error) { 
           alert(error.response?.data?.error || "Failed to create payment."); 
       }
@@ -163,7 +158,7 @@ export default function AdminDashboard() {
 
   return (
     <div className="min-h-screen bg-slate-50 font-sans">
-      <Navbar />
+      <Navbar toggleHistory={() => setShowHistory(!showHistory)} />
 
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         
@@ -318,7 +313,7 @@ export default function AdminDashboard() {
                                 <div className="flex items-center gap-2">
                                     <button onClick={() => setViewUserHistory(u)} className="text-[10px] bg-white border border-slate-200 px-3 py-1 rounded font-bold text-slate-600 hover:bg-slate-50 transition shadow-sm">History</button>
                                     
-                                    {/* 🔥 VIEW ID BUTTON FOR ADMIN 🔥 */}
+                                    {/* 🔥 VIEW ID BUTTON 🔥 */}
                                     {u.gov_id && (
                                         <a href={getFileUrl(u.gov_id)} target="_blank" rel="noopener noreferrer" className="text-[10px] bg-purple-50 text-purple-700 border border-purple-200 px-3 py-1 rounded font-bold hover:bg-purple-100 transition shadow-sm">
                                             View ID
@@ -348,7 +343,6 @@ export default function AdminDashboard() {
                             <div key={log._id} className="text-xs p-2 bg-slate-50 border-l-2 border-blue-500 rounded">
                                 <span className="font-bold block text-blue-700">{log.user_username}</span>
                                 <span className="block font-semibold">{log.action}</span>
-                                {/* 🔥 IST TIME 🔥 */}
                                 <span className="text-[9px] text-slate-400">{formatIST(log.timestamp)}</span>
                             </div>
                         ))}
@@ -359,30 +353,37 @@ export default function AdminDashboard() {
       </main>
 
       {/* --- MODALS --- */}
-      
-      {/* 1. View User History Modal */}
       {viewUserHistory && <ProfileModal targetUser={viewUserHistory} onClose={() => setViewUserHistory(null)} />}
       
-      {/* 2. Routing Modal */}
+      {/* 🔥 ROUTING MODAL WITH NOTES 🔥 */}
       {routingDoc && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 backdrop-blur-sm">
           <div className="bg-white p-8 rounded-xl shadow-2xl w-96 animate-scale-in">
             <h3 className="text-xl font-bold mb-4">Route Document</h3>
             <form onSubmit={handleRouteSubmit}>
-              <select name="dept" className="w-full border p-3 rounded-lg mb-6 bg-slate-50" required>
+              <select name="dept" className="w-full border p-3 rounded-lg mb-4 bg-slate-50" required>
                 <option value="">-- Choose Department --</option>
                 {depts.map(d => (<option key={d._id} value={d._id}>{d.name}</option>))}
               </select>
+              
+              {/* 🔥 REMARK FIELD 🔥 */}
+              <textarea 
+                  className="w-full border p-3 rounded-lg mb-6 bg-slate-50 text-sm h-24 resize-none focus:ring-2 focus:ring-blue-500 outline-none" 
+                  placeholder="Add instructions/remarks for Dept Admin..."
+                  value={actionNote}
+                  onChange={(e) => setActionNote(e.target.value)}
+              ></textarea>
+
               <div className="flex gap-3 justify-end">
                 <button type="button" onClick={() => setRoutingDoc(null)} className="px-4 py-2 text-slate-600 font-bold">Cancel</button>
-                <button type="submit" className="px-4 py-2 bg-blue-600 text-white font-bold rounded-lg shadow">Confirm</button>
+                <button type="submit" className="px-4 py-2 bg-blue-600 text-white font-bold rounded-lg shadow">Confirm Route</button>
               </div>
             </form>
           </div>
         </div>
       )}
 
-      {/* 3. Payment Modal */}
+      {/* PAYMENT MODAL */}
       {paymentDoc && (
         <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 backdrop-blur-sm">
             <div className="bg-white p-8 rounded-xl shadow-2xl w-[400px] animate-scale-in max-h-[90vh] overflow-y-auto">
@@ -415,51 +416,38 @@ export default function AdminDashboard() {
         </div>
       )}
 
-      {/* 4. Info Modal */}
+      {/* INFO MODAL WITH NOTES */}
       {infoDoc && (
-          <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 backdrop-blur-sm">
+          <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 backdrop-blur-sm p-4">
               <div className="bg-white p-6 rounded-xl w-[500px] shadow-2xl animate-scale-in">
                   <div className="flex justify-between items-center mb-4 border-b pb-2">
                       <h3 className="text-lg font-bold text-slate-800">Document Lifecycle</h3>
                       <button onClick={() => setInfoDoc(null)} className="text-xl font-bold text-slate-400 hover:text-red-500">&times;</button>
                   </div>
                   
-                  <div className="space-y-4 text-sm">
-                      <div className="bg-blue-50 p-3 rounded-lg border border-blue-100 flex justify-between">
-                          <div><p className="text-xs font-bold text-blue-800 uppercase">Tracking ID</p><p className="font-mono text-lg font-bold text-blue-900">{infoDoc.tracking_id}</p></div>
-                          <div className="text-right"><p className="text-xs font-bold text-blue-800 uppercase">Fee Status</p><p className={`font-bold ${infoDoc.fee_status==='Paid'?'text-green-600':'text-red-500'}`}>{infoDoc.fee_status}</p></div>
-                      </div>
+                  {/* 🔥 NOTES HISTORY 🔥 */}
+                  <div className="mb-4 bg-slate-50 p-3 rounded-lg border border-slate-200 max-h-40 overflow-y-auto">
+                      <p className="text-xs font-bold text-slate-400 uppercase mb-2">Communication Log</p>
+                      {infoDoc.notes && infoDoc.notes.length > 0 ? infoDoc.notes.map((n, i) => (
+                          <div key={i} className="text-xs border-b border-slate-200 pb-2 mb-2 last:border-0">
+                              <span className="font-bold text-blue-700">{n.sender} ({n.role}): </span>
+                              <span className="text-slate-700">{n.message}</span>
+                              <div className="text-[9px] text-slate-400 mt-0.5">{formatIST(n.timestamp)}</div>
+                          </div>
+                      )) : <p className="text-xs text-slate-400 italic">No notes.</p>}
+                  </div>
 
+                  <div className="space-y-4 text-sm">
+                      <div className="bg-blue-50 p-3 rounded-lg border border-blue-100 flex justify-between"><div><p className="text-xs font-bold text-blue-800 uppercase">ID</p><p className="font-mono text-lg font-bold text-blue-900">{infoDoc.tracking_id}</p></div><div className="text-right"><p className="text-xs font-bold text-blue-800 uppercase">Fee</p><p className="font-bold">{infoDoc.fee_status}</p></div></div>
                       <div className="bg-slate-50 p-4 rounded-lg border border-slate-200 space-y-3">
                           <h4 className="text-xs font-bold text-slate-500 uppercase border-b pb-2">Timeline Events</h4>
-                          
-                          <div className="flex justify-between">
-                              <span className="text-slate-600">1. Uploaded:</span> 
-                              <span className="font-mono font-bold">{formatIST(infoDoc.uploaded_at)}</span>
-                          </div>
-                          <div className="flex justify-between">
-                              <span className={infoDoc.sent_to_dept_at ? "text-slate-800 font-semibold" : "text-slate-400"}>2. Sent to Dept:</span> 
-                              <span className="font-mono">{infoDoc.sent_to_dept_at ? formatIST(infoDoc.sent_to_dept_at) : '-'}</span>
-                          </div>
-                          <div className="flex justify-between pl-4 border-l-2 border-yellow-200">
-                              <span className={infoDoc.assigned_to_faculty_at ? "text-slate-800 font-semibold" : "text-slate-400"}>↳ Faculty Assigned:</span> 
-                              <span className="font-mono text-xs">{infoDoc.assigned_to_faculty_at ? formatIST(infoDoc.assigned_to_faculty_at) : '-'}</span>
-                          </div>
-                          <div className="flex justify-between pl-4 border-l-2 border-purple-200">
-                              <span className={infoDoc.faculty_processed_at ? "text-slate-800 font-semibold" : "text-slate-400"}>↳ Faculty Reported:</span> 
-                              <span className="font-mono text-xs">{infoDoc.faculty_processed_at ? formatIST(infoDoc.faculty_processed_at) : '-'}</span>
-                          </div>
-                          <div className="flex justify-between">
-                              <span className={infoDoc.dept_processed_at ? "text-slate-800 font-semibold" : "text-slate-400"}>3. Dept Approved:</span> 
-                              <span className="font-mono">{infoDoc.dept_processed_at ? formatIST(infoDoc.dept_processed_at) : '-'}</span>
-                          </div>
-                          <div className="flex justify-between border-t pt-2 mt-2">
-                              <span className={infoDoc.final_report_sent_at ? "text-green-700 font-bold" : "text-slate-400"}>4. Completed:</span> 
-                              <span className="font-mono font-bold text-green-600">{infoDoc.final_report_sent_at ? formatIST(infoDoc.final_report_sent_at) : '-'}</span>
-                          </div>
+                          <div className="flex justify-between"><span className="text-slate-600">1. Uploaded:</span><span className="font-mono font-bold">{formatIST(infoDoc.uploaded_at)}</span></div>
+                          <div className="flex justify-between"><span className={infoDoc.sent_to_dept_at ? "text-slate-800 font-semibold" : "text-slate-400"}>2. Sent to Dept:</span><span className="font-mono">{infoDoc.sent_to_dept_at ? formatIST(infoDoc.sent_to_dept_at) : '-'}</span></div>
+                          <div className="flex justify-between pl-4 border-l-2 border-yellow-200"><span className={infoDoc.assigned_to_faculty_at ? "text-slate-800 font-semibold" : "text-slate-400"}>↳ Faculty Assigned:</span><span className="font-mono text-xs">{infoDoc.assigned_to_faculty_at ? formatIST(infoDoc.assigned_to_faculty_at) : '-'}</span></div>
+                          <div className="flex justify-between pl-4 border-l-2 border-purple-200"><span className={infoDoc.faculty_processed_at ? "text-slate-800 font-semibold" : "text-slate-400"}>↳ Faculty Reported:</span><span className="font-mono text-xs">{infoDoc.faculty_processed_at ? formatIST(infoDoc.faculty_processed_at) : '-'}</span></div>
+                          <div className="flex justify-between"><span className={infoDoc.dept_processed_at ? "text-slate-800 font-semibold" : "text-slate-400"}>3. Dept Approved:</span><span className="font-mono">{infoDoc.dept_processed_at ? formatIST(infoDoc.dept_processed_at) : '-'}</span></div>
+                          <div className="flex justify-between border-t pt-2 mt-2"><span className={infoDoc.final_report_sent_at ? "text-green-700 font-bold" : "text-slate-400"}>4. Completed:</span><span className="font-mono font-bold text-green-600">{infoDoc.final_report_sent_at ? formatIST(infoDoc.final_report_sent_at) : '-'}</span></div>
                       </div>
-
-                      {/* Financial Lifecycle */}
                       {infoDoc.fee_total > 0 && (
                           <div className="bg-blue-50/50 p-3 rounded-lg border border-blue-100">
                               <span className="text-xs font-bold text-blue-800 uppercase block mb-2">Financial Lifecycle (₹{infoDoc.fee_total})</span>
@@ -473,19 +461,12 @@ export default function AdminDashboard() {
                               ))}
                           </div>
                       )}
-
                       {infoDoc.dept_report && (
-                          <div className="mt-4">
-                              <a href={getFileUrl(infoDoc.dept_report)} target="_blank" rel="noopener noreferrer" className="block text-center w-full bg-purple-600 text-white py-2 rounded font-bold hover:bg-purple-700">View PDF Report</a>
-                          </div>
+                          <div className="mt-4"><a href={getFileUrl(infoDoc.dept_report)} target="_blank" rel="noopener noreferrer" className="block text-center w-full bg-purple-600 text-white py-2 rounded font-bold hover:bg-purple-700">View PDF Report</a></div>
                       )}
-
                       {infoDoc.status === 'Dept_Reported' && (
-                          <button onClick={() => handleForwardToClient(infoDoc._id)} className="w-full bg-green-600 text-white py-3 rounded-lg font-bold shadow hover:bg-green-700 mt-2">
-                              Forward Final Report to Client
-                          </button>
+                          <button onClick={() => handleForwardToClient(infoDoc._id)} className="w-full bg-green-600 text-white py-3 rounded-lg font-bold shadow hover:bg-green-700 mt-2">Forward Final Report to Client</button>
                       )}
-                      
                       <button onClick={() => setInfoDoc(null)} className="w-full bg-slate-100 py-2 rounded-lg font-bold hover:bg-slate-200 mt-2">Close</button>
                   </div>
               </div>
