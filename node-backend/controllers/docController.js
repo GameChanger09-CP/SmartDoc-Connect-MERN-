@@ -2,7 +2,7 @@ const { Document, Department, ActivityLog, User } = require('../models');
 const { v4: uuidv4 } = require('uuid');
 const { sendMail } = require('../utils/mailer');
 const fs = require('fs');
-
+const path = require('path')
 // Helper to append notes AND update latest remark
 const addNote = (doc, user, message) => {
     if (message && message.trim() !== "") {
@@ -230,4 +230,37 @@ exports.returnDoc = async (req, res) => {
         await doc.save();
         res.json({ status: 'Returned' });
     } catch (error) { res.status(500).json({ error: "Return failed" }); }
+};
+
+
+
+exports.downloadDeptReport = async (req, res) => {
+  try {
+    const { docId } = req.params;
+    const doc = await Document.findById(docId);
+
+    if (!doc || !doc.dept_report) {
+      return res.status(404).json({ error: 'Report not found' });
+    }
+
+    // Extract filename + extension safely
+    const originalFileName = path.basename(doc.dept_report);
+    const ext = path.extname(originalFileName); // .pdf or .png
+
+    const reportPath = path.join(
+      __dirname,
+      '..',
+      'dept_reports',
+      originalFileName
+    );
+
+    return res.download(
+      reportPath,
+      `Report_${doc.tracking_id}${ext}` // ✅ dynamic extension
+    );
+
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Server error' });
+  }
 };

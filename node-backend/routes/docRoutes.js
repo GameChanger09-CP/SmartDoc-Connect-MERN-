@@ -22,7 +22,8 @@ router.post('/:id/unassign_faculty', auth, docController.unassignFaculty);
 
 // Payment Routes
 router.get('/get-razorpay-key', auth, paymentController.getKey);
-router.post('/:id/request_payment', auth, paymentController.requestPayment);
+router.post('/:id/request_payment', auth, paymentController.requestPayment);    
 router.post('/verify_payment', auth, paymentController.verifyPayment);
+
 
 module.exports = router;

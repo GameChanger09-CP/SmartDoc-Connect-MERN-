@@ -107,6 +107,47 @@ export default function ClientDashboard() {
 
   const getFileUrl = (path) => path ? `http://127.0.0.1:8000/${path.replace(/\\/g, '/')}` : '#';
 
+
+  ///updated function for downloading report on client side...............
+const downloadReport = async (doc) => {
+  try {
+    const res = await api.get(
+      `/download-report/${doc._id}`,
+      {
+        responseType: 'blob',
+        headers: { Accept: '*/*' },
+        validateStatus: () => true,
+      }
+    );
+
+    // Extract filename from Content-Disposition
+    const disposition = res.headers['content-disposition'];
+    let filename = `Report_${doc.tracking_id}`;
+
+    if (disposition && disposition.includes('filename=')) {
+      filename = disposition
+        .split('filename=')[1]
+        .replace(/"/g, '');
+    }
+
+    const blob = new Blob([res.data]);
+    const url = window.URL.createObjectURL(blob);
+
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = filename;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+
+    window.URL.revokeObjectURL(url);
+  } catch (err) {
+    console.error(err);
+    alert('Download failed');
+  }
+};
+
+
   return (
     <div className="min-h-screen bg-slate-50 font-sans">
       <Navbar />
@@ -161,9 +202,17 @@ export default function ClientDashboard() {
 
                     <div className="flex justify-between items-center border-t border-slate-100 pt-4">
                         <button onClick={() => setInfoDoc(doc)} className="text-sm font-bold text-blue-600 hover:underline">View Status</button>
-                        {doc.status === 'Completed' && doc.dept_report && (
+                        {/* {doc.status === 'Completed' && doc.dept_report && (
                             <a href={getFileUrl(doc.dept_report)} target="_blank" rel="noopener noreferrer" className="bg-green-100 text-green-700 px-3 py-1 rounded text-xs font-bold">⬇ Report</a>
+                        )} */}
+                        {doc.status === 'Completed' && doc.dept_report && (
+                          <button onClick={() => downloadReport(doc)}
+                            className="bg-green-100 text-green-700 px-3 py-1 rounded text-xs font-bold hover:bg-green-200 transition" >
+                            ⬇ Download Report
+                           </button>
                         )}
+
+
                     </div>
                 </div>
             ))}
