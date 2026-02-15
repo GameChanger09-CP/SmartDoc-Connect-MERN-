@@ -245,13 +245,78 @@ export default function AdminDashboard() {
             </div>
 
             {/* RIGHT SLIDEOUT LOGS */}
-            {showHistory && (
+            {/* {showHistory && (
                 <div className="fixed right-0 top-16 bottom-0 w-80 bg-white shadow-2xl border-l border-slate-200 p-4 z-30 overflow-y-auto animate-slide-in-right">
                     <h3 className="font-bold text-slate-800 mb-2 border-b pb-2">Global Logs</h3>
                     <input type="text" placeholder="Search..." value={logSearch} onChange={(e) => setLogSearch(e.target.value)} className="w-full text-xs p-2 mb-2 border rounded" />
                     <div className="space-y-2">{logs.filter(l => l.action.toLowerCase().includes(logSearch.toLowerCase())).map(log => (<div key={log._id} className="text-xs p-2 bg-slate-50 border-l-2 border-blue-500 rounded"><span className="font-bold block text-blue-700">{log.user_username}</span><span className="block font-semibold">{log.action}</span><span className="text-[9px] text-slate-400">{formatIST(log.timestamp)}</span></div>))}</div>
                 </div>
-            )}
+            )} */}
+
+            {/* RIGHT SLIDEOUT LOGS  Updated................*/}
+{showHistory && (
+  <div className="fixed right-0 top-16 bottom-0 w-80 bg-white
+                  shadow-2xl border-l border-slate-200
+                  z-40 flex flex-col animate-slide-in-right">
+
+    {/* HEADER WITH CLOSE BUTTON */}
+    <div className="flex items-center justify-between
+                    px-4 py-3 border-b border-slate-200
+                    bg-slate-50 sticky top-0 z-10">
+      <h3 className="font-bold text-slate-800 text-sm">
+        Global Logs
+      </h3>
+
+      {/* ❌ CLOSE BUTTON */}
+      <button
+        onClick={() => setShowHistory(false)}
+        className="text-slate-500 hover:text-red-600
+                   text-xl font-bold leading-none"
+        aria-label="Close logs"
+      >
+        ×
+      </button>
+    </div>
+
+    {/* SEARCH */}
+    <div className="p-3 border-b">
+      <input
+        type="text"
+        placeholder="Search logs..."
+        value={logSearch}
+        onChange={(e) => setLogSearch(e.target.value)}
+        className="w-full text-xs p-2 border rounded
+                   focus:outline-none focus:ring-2
+                   focus:ring-blue-500"
+      />
+    </div>
+
+    {/* LOG LIST */}
+    <div className="flex-1 overflow-y-auto p-3 space-y-2">
+      {logs
+        .filter(l =>
+          l.action.toLowerCase().includes(logSearch.toLowerCase())
+        )
+        .map(log => (
+          <div
+            key={log._id}
+            className="text-xs p-2 bg-slate-50
+                       border-l-2 border-blue-500 rounded"
+          >
+            <span className="font-bold block text-blue-700">
+              {log.user_username}
+            </span>
+            <span className="block font-semibold">
+              {log.action}
+            </span>
+            <span className="text-[9px] text-slate-400">
+              {formatIST(log.timestamp)}
+            </span>
+          </div>
+        ))}
+    </div>
+  </div>
+)}
         </div>
       </main>
 

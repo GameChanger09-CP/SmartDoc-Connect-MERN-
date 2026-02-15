@@ -60,7 +60,7 @@ export default function Landing() {
               className="bg-gradient-to-b from-red-900/40 to-transparent backdrop-blur-md border border-red-500/30 p-8 rounded-2xl cursor-pointer hover:border-red-500/60 transition-all duration-300 hover:-translate-y-2 hover:shadow-2xl group text-left"
             >
               <div className="bg-red-500/20 w-12 h-12 rounded-lg flex items-center justify-center text-2xl mb-4 group-hover:scale-110 transition">🛡️</div>
-              <h3 className="text-xl font-bold mb-2">System Admin</h3>
+              <h3 className="text-xl font-bold mb-2">College Admin</h3>
               <p className="text-red-200 text-sm mb-4">Oversee the entire organization, manage users, and audit security logs.</p>
               <span className="text-red-400 text-xs font-bold uppercase tracking-wider group-hover:text-white transition">Secure Access →</span>
             </div>
