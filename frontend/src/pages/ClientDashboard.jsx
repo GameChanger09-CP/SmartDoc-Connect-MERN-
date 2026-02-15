@@ -166,7 +166,6 @@ export default function ClientDashboard() {
                         <div className="flex justify-between items-center">
                             <button onClick={() => setInfoDoc(doc)} className="text-sm font-bold text-blue-600 hover:underline">View Status</button>
                         </div>
-                        {/* 🔥 CLIENT DOWNLOAD BUTTONS 🔥 */}
                         {doc.status === 'Completed' && doc.dept_report && (
                             <div className="flex gap-2">
                                 <a href={getFileUrl(doc.dept_report)} target="_blank" rel="noopener noreferrer" className="flex-1 text-center text-[10px] bg-purple-50 text-purple-700 px-2 py-1 rounded border border-purple-200 font-bold hover:bg-purple-100">View Report</a>
@@ -183,7 +182,22 @@ export default function ClientDashboard() {
       {infoDoc && (
         <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 backdrop-blur-sm p-4">
             <div className="bg-white p-6 rounded-xl w-full max-w-md animate-scale-in shadow-2xl">
-                <div className="flex justify-between items-center mb-4 border-b pb-2"><h3 className="font-bold text-lg">Status</h3><button onClick={() => setInfoDoc(null)} className="text-xl">&times;</button></div>
+                <div className="flex justify-between items-center mb-4 border-b pb-2"><h3 className="font-bold text-lg">Status & Remarks</h3><button onClick={() => setInfoDoc(null)} className="text-xl">&times;</button></div>
+                
+                {/* 🔥 NOTES SECTION (Visible to Client if Main_Admin) 🔥 */}
+                {infoDoc.notes && infoDoc.notes.length > 0 && (
+                    <div className="mb-4 bg-slate-50 p-3 rounded-lg border border-slate-200 max-h-32 overflow-y-auto">
+                        <p className="text-xs font-bold text-slate-400 uppercase mb-2">Admin Remarks</p>
+                        {infoDoc.notes.map((n, i) => (
+                            <div key={i} className="text-xs border-b border-slate-200 pb-2 mb-2 last:border-0">
+                                <span className="font-bold text-blue-700">Admin: </span>
+                                <span className="text-slate-700">{n.message}</span>
+                                <div className="text-[9px] text-slate-400 mt-0.5">{formatIST(n.timestamp)}</div>
+                            </div>
+                        ))}
+                    </div>
+                )}
+
                 <div className="space-y-4 text-sm">
                     <div className="bg-blue-50 p-3 rounded-lg border text-center"><p className="text-xs font-bold uppercase">Tracking ID</p><p className="font-mono text-2xl font-extrabold text-blue-900">{infoDoc.tracking_id}</p></div>
                     
