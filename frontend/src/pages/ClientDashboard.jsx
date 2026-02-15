@@ -202,9 +202,6 @@ const downloadReport = async (doc) => {
 
                     <div className="flex justify-between items-center border-t border-slate-100 pt-4">
                         <button onClick={() => setInfoDoc(doc)} className="text-sm font-bold text-blue-600 hover:underline">View Status</button>
-                        {/* {doc.status === 'Completed' && doc.dept_report && (
-                            <a href={getFileUrl(doc.dept_report)} target="_blank" rel="noopener noreferrer" className="bg-green-100 text-green-700 px-3 py-1 rounded text-xs font-bold">⬇ Report</a>
-                        )} */}
                         {doc.status === 'Completed' && doc.dept_report && (
                           <button onClick={() => downloadReport(doc)}
                             className="bg-green-100 text-green-700 px-3 py-1 rounded text-xs font-bold hover:bg-green-200 transition" >
