@@ -2,18 +2,12 @@ import React, { useState, useEffect } from 'react';
 import api from '../api';
 import Navbar from '../components/Navbar';
 
-// --- HELPER: FORMAT DATE TO IST ---
 const formatIST = (dateString) => {
     if (!dateString) return '-';
     const date = new Date(dateString);
-    return date.toLocaleString('en-IN', {
-        timeZone: 'Asia/Kolkata',
-        day: '2-digit', month: 'short', year: 'numeric',
-        hour: '2-digit', minute: '2-digit', hour12: true
-    });
+    return date.toLocaleString('en-IN', { timeZone: 'Asia/Kolkata', day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit', hour12: true });
 };
 
-// --- RAZORPAY LOADER ---
 const loadRazorpay = () => {
     return new Promise((resolve) => {
         if (window.Razorpay) { resolve(true); return; }
@@ -40,7 +34,6 @@ export default function ClientDashboard() {
 
   useEffect(() => { fetchDocs(); }, []);
 
-  // --- PRIVACY STATUS MAPPING ---
   const getClientStatus = (status) => {
       const activeStates = ['Review_Required', 'In_Progress', 'With_Faculty', 'Faculty_Reported', 'Dept_Reported', 'Returned_To_Main'];
       if (activeStates.includes(status)) return 'In Progress';
@@ -54,7 +47,7 @@ export default function ClientDashboard() {
       const s = getClientStatus(status);
       if (s === 'Completed') return 'bg-green-100 text-green-700 border-green-200';
       if (s === 'Declined') return 'bg-red-100 text-red-700 border-red-200';
-      if (s === 'On Hold') return 'bg-gray-100 text-gray-700 border-gray-200';
+      if (s === 'On Hold') return 'bg-slate-100 text-slate-700 border-slate-200';
       return 'bg-blue-50 text-blue-700 border-blue-200';
   };
 
@@ -69,14 +62,13 @@ export default function ClientDashboard() {
     e.preventDefault();
     if(!file) return alert("Please select a file");
     const formData = new FormData(); formData.append('file', file);
-    try { await api.post('/api/documents/', formData); fetchDocs(); setFile(null); alert('Uploaded successfully!'); } 
+    try { await api.post('/api/documents/', formData); fetchDocs(); setFile(null); alert('Uploaded!'); } 
     catch (error) { alert("Upload Failed."); }
   };
 
   const handleCheckout = async (doc, installment) => {
       const isLoaded = await loadRazorpay();
       if (!isLoaded) return alert("Razorpay failed to load.");
-
       try {
           const { data: { key } } = await api.get('/api/documents/get-razorpay-key');
           const options = {
@@ -107,11 +99,24 @@ export default function ClientDashboard() {
 
   const getFileUrl = (path) => path ? `http://127.0.0.1:8000/${path.replace(/\\/g, '/')}` : '#';
 
+  // 🔥 FORCE DOWNLOAD 🔥
+  const handleForceDownload = (url, baseFilename) => {
+      const extension = url.split('.').pop().split(/\#|\?/)[0];
+      const filename = `${baseFilename}.${extension}`;
+      fetch(url).then(response => response.blob()).then(blob => {
+          const link = document.createElement("a");
+          link.href = URL.createObjectURL(blob);
+          link.download = filename;
+          document.body.appendChild(link);
+          link.click();
+          document.body.removeChild(link);
+      }).catch(() => window.open(url, '_blank'));
+  };
+
   return (
     <div className="min-h-screen bg-slate-50 font-sans">
       <Navbar />
       <div className="max-w-7xl mx-auto p-6 py-10">
-        
         <div className="mb-10 flex justify-between items-end">
             <div><h1 className="text-3xl font-extrabold text-slate-900">My Documents</h1><p className="text-slate-500 mt-1">Track status and pay fees.</p></div>
             <select value={filterStatus} onChange={(e) => setFilterStatus(e.target.value)} className="text-sm border border-slate-300 rounded-lg p-2"><option value="All">All Documents</option><option value="Active">Active</option><option value="Completed">Completed</option></select>
@@ -130,7 +135,6 @@ export default function ClientDashboard() {
                     
                     <div className="flex justify-between items-start mb-4">
                         <span className="font-mono text-xs font-bold text-slate-400 uppercase">{doc.tracking_id}</span>
-                        {/* 🔥 PRIVACY: Client sees generic status 🔥 */}
                         <span className={`px-2 py-1 rounded text-[10px] font-bold uppercase border ${getStatusColor(doc.status)}`}>
                             {getClientStatus(doc.status)}
                         </span>
@@ -139,7 +143,6 @@ export default function ClientDashboard() {
                     <h4 className="font-bold mb-2">Application Document</h4>
                     <p className="text-xs text-slate-500 mb-4 flex-grow">Uploaded: {formatIST(doc.uploaded_at)}</p>
 
-                    {/* PAYMENT BUTTONS */}
                     {doc.fee_total > 0 && (
                         <div className="bg-slate-50 p-3 rounded-lg border border-slate-200 mb-4">
                             <div className="flex justify-between items-center mb-2 border-b border-slate-200 pb-2">
@@ -159,10 +162,16 @@ export default function ClientDashboard() {
                         </div>
                     )}
 
-                    <div className="flex justify-between items-center border-t border-slate-100 pt-4">
-                        <button onClick={() => setInfoDoc(doc)} className="text-sm font-bold text-blue-600 hover:underline">View Status</button>
+                    <div className="flex flex-col gap-2 border-t border-slate-100 pt-4">
+                        <div className="flex justify-between items-center">
+                            <button onClick={() => setInfoDoc(doc)} className="text-sm font-bold text-blue-600 hover:underline">View Status</button>
+                        </div>
+                        {/* 🔥 CLIENT DOWNLOAD BUTTONS 🔥 */}
                         {doc.status === 'Completed' && doc.dept_report && (
-                            <a href={getFileUrl(doc.dept_report)} target="_blank" rel="noopener noreferrer" className="bg-green-100 text-green-700 px-3 py-1 rounded text-xs font-bold">⬇ Report</a>
+                            <div className="flex gap-2">
+                                <a href={getFileUrl(doc.dept_report)} target="_blank" rel="noopener noreferrer" className="flex-1 text-center text-[10px] bg-purple-50 text-purple-700 px-2 py-1 rounded border border-purple-200 font-bold hover:bg-purple-100">View Report</a>
+                                <button onClick={() => handleForceDownload(getFileUrl(doc.dept_report), `${doc.tracking_id}_report`)} className="flex-1 text-center text-[10px] bg-green-50 text-green-700 px-2 py-1 rounded border border-green-200 font-bold hover:bg-green-100">Download</button>
+                            </div>
                         )}
                     </div>
                 </div>
@@ -171,7 +180,6 @@ export default function ClientDashboard() {
         </div>
       </div>
 
-      {/* INFO MODAL - USES PRIVACY STATUS & IST */}
       {infoDoc && (
         <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 backdrop-blur-sm p-4">
             <div className="bg-white p-6 rounded-xl w-full max-w-md animate-scale-in shadow-2xl">
@@ -182,15 +190,11 @@ export default function ClientDashboard() {
                     <div className="bg-slate-50 p-6 rounded-lg border space-y-6">
                         <div className="flex items-center gap-4">
                             <div className="w-10 h-10 rounded-full bg-green-100 flex items-center justify-center text-xl">📤</div>
-                            <div>
-                                <p className="font-bold">Received</p>
-                                <p className="text-xs text-slate-500">{formatIST(infoDoc.uploaded_at)}</p>
-                            </div>
+                            <div><p className="font-bold">Received</p><p className="text-xs text-slate-500">{formatIST(infoDoc.uploaded_at)}</p></div>
                         </div>
                         <div className="flex items-center gap-4">
                             <div className={`w-10 h-10 rounded-full flex items-center justify-center text-xl ${infoDoc.status === 'Completed' ? 'bg-green-100' : 'bg-yellow-100 animate-pulse'}`}>{infoDoc.status === 'Completed' ? '✅' : '⚙️'}</div>
                             <div>
-                                {/* 🔥 PRIVACY STATUS TEXT 🔥 */}
                                 <p className="font-bold">{getClientStatus(infoDoc.status) === 'Completed' ? 'Verification Complete' : 'Internal Processing'}</p>
                                 <p className="text-xs text-slate-500">{getClientStatus(infoDoc.status) === 'Completed' ? 'Final report ready.' : 'Currently under review by our team.'}</p>
                             </div>
