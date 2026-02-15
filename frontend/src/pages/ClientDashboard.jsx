@@ -99,48 +99,6 @@ export default function ClientDashboard() {
 
   const getFileUrl = (path) => path ? `http://127.0.0.1:8000/${path.replace(/\\/g, '/')}` : '#';
 
-<<<<<<< HEAD
-
-  ///updated function for downloading report on client side...............
-const downloadReport = async (doc) => {
-  try {
-    const res = await api.get(
-      `/download-report/${doc._id}`,
-      {
-        responseType: 'blob',
-        headers: { Accept: '*/*' },
-        validateStatus: () => true,
-      }
-    );
-
-    // Extract filename from Content-Disposition
-    const disposition = res.headers['content-disposition'];
-    let filename = `Report_${doc.tracking_id}`;
-
-    if (disposition && disposition.includes('filename=')) {
-      filename = disposition
-        .split('filename=')[1]
-        .replace(/"/g, '');
-    }
-
-    const blob = new Blob([res.data]);
-    const url = window.URL.createObjectURL(blob);
-
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = filename;
-    document.body.appendChild(link);
-    link.click();
-    link.remove();
-
-    window.URL.revokeObjectURL(url);
-  } catch (err) {
-    console.error(err);
-    alert('Download failed');
-  }
-};
-
-=======
   // 🔥 FORCE DOWNLOAD 🔥
   const handleForceDownload = (url, baseFilename) => {
       const extension = url.split('.').pop().split(/\#|\?/)[0];
@@ -154,7 +112,6 @@ const downloadReport = async (doc) => {
           document.body.removeChild(link);
       }).catch(() => window.open(url, '_blank'));
   };
->>>>>>> 997f5892f221bd36d1f223ba56ed01491a28ccbd
 
   return (
     <div className="min-h-screen bg-slate-50 font-sans">
@@ -210,17 +167,10 @@ const downloadReport = async (doc) => {
                             <button onClick={() => setInfoDoc(doc)} className="text-sm font-bold text-blue-600 hover:underline">View Status</button>
                         </div>
                         {doc.status === 'Completed' && doc.dept_report && (
-<<<<<<< HEAD
-                          <button onClick={() => downloadReport(doc)}
-                            className="bg-green-100 text-green-700 px-3 py-1 rounded text-xs font-bold hover:bg-green-200 transition" >
-                            ⬇ Download Report
-                           </button>
-=======
                             <div className="flex gap-2">
                                 <a href={getFileUrl(doc.dept_report)} target="_blank" rel="noopener noreferrer" className="flex-1 text-center text-[10px] bg-purple-50 text-purple-700 px-2 py-1 rounded border border-purple-200 font-bold hover:bg-purple-100">View Report</a>
                                 <button onClick={() => handleForceDownload(getFileUrl(doc.dept_report), `${doc.tracking_id}_report`)} className="flex-1 text-center text-[10px] bg-green-50 text-green-700 px-2 py-1 rounded border border-green-200 font-bold hover:bg-green-100">Download</button>
                             </div>
->>>>>>> 997f5892f221bd36d1f223ba56ed01491a28ccbd
                         )}
 
 

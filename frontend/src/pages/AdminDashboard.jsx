@@ -139,24 +139,14 @@ export default function AdminDashboard() {
       <Navbar toggleHistory={() => setShowHistory(!showHistory)} />
 
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-<<<<<<< HEAD
-
-        {/* --- HEADER & LOG TOGGLE --- */}
-=======
         
         {/* Header */}
->>>>>>> 997f5892f221bd36d1f223ba56ed01491a28ccbd
         <div className="flex justify-between items-end mb-8">
             <div><h2 className="text-3xl font-extrabold text-slate-900">System Overview</h2><p className="text-slate-500 mt-1">Main Admin Control Panel</p></div>
             <button onClick={() => setShowHistory(!showHistory)} className={`flex items-center gap-2 px-4 py-2 rounded-lg font-bold text-sm shadow-sm transition ${showHistory ? 'bg-blue-600 text-white' : 'bg-white text-slate-600 border border-slate-300'}`}><span>{showHistory ? 'Close Logs' : '📜 Global Logs'}</span></button>
         </div>
 
-<<<<<<< HEAD
-
-        {/* --- KPI CARDS --- */}
-=======
         {/* KPI Cards */}
->>>>>>> 997f5892f221bd36d1f223ba56ed01491a28ccbd
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
             {chartData.map((d, i) => (<div key={i} className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 flex items-center justify-between hover:shadow-md transition"><div><p className="text-slate-500 text-xs font-bold uppercase tracking-widest">{d.name}</p><h3 className="text-3xl font-extrabold" style={{color: d.fill}}>{d.count}</h3></div><div className="w-4 h-4 rounded-full" style={{backgroundColor: d.fill}}></div></div>))}
         </div>
@@ -254,77 +244,6 @@ export default function AdminDashboard() {
                 </div>
             </div>
 
-<<<<<<< HEAD
-
-
-
-                 {/* RIGHT SLIDEOUT LOGS  Updated................*/}
-{showHistory && (
-  <div className="fixed right-0 top-16 bottom-0 w-80 bg-white
-                  shadow-2xl border-l border-slate-200
-                  z-40 flex flex-col animate-slide-in-right">
-
-    {/* HEADER WITH CLOSE BUTTON */}
-    <div className="flex items-center justify-between
-                    px-4 py-3 border-b border-slate-200
-                    bg-slate-50 sticky top-0 z-10">
-      <h3 className="font-bold text-slate-800 text-sm">
-        Global Logs
-      </h3>
-
-      {/* ❌ CLOSE BUTTON */}
-      <button
-        onClick={() => setShowHistory(false)}
-        className="text-slate-500 hover:text-red-600
-                   text-xl font-bold leading-none"
-        aria-label="Close logs"
-      >
-        ×
-      </button>
-    </div>
-
-    {/* SEARCH */}
-    <div className="p-3 border-b">
-      <input
-        type="text"
-        placeholder="Search logs..."
-        value={logSearch}
-        onChange={(e) => setLogSearch(e.target.value)}
-        className="w-full text-xs p-2 border rounded
-                   focus:outline-none focus:ring-2
-                   focus:ring-blue-500"
-      />
-    </div>
-
-    {/* LOG LIST */}
-    <div className="flex-1 overflow-y-auto p-3 space-y-2">
-      {logs
-        .filter(l =>
-          l.action.toLowerCase().includes(logSearch.toLowerCase())
-        )
-        .map(log => (
-          <div
-            key={log._id}
-            className="text-xs p-2 bg-slate-50
-                       border-l-2 border-blue-500 rounded"
-          >
-            <span className="font-bold block text-blue-700">
-              {log.user_username}
-            </span>
-            <span className="block font-semibold">
-              {log.action}
-            </span>
-            <span className="text-[9px] text-slate-400">
-              {formatIST(log.timestamp)}
-            </span>
-          </div>
-        ))}
-    </div>
-  </div>
-)}
-
-            
-=======
             {/* RIGHT SLIDEOUT LOGS */}
             {showHistory && (
                 <div className="fixed right-0 top-16 bottom-0 w-80 bg-white shadow-2xl border-l border-slate-200 p-4 z-30 overflow-y-auto animate-slide-in-right">
@@ -333,7 +252,6 @@ export default function AdminDashboard() {
                     <div className="space-y-2">{logs.filter(l => l.action.toLowerCase().includes(logSearch.toLowerCase())).map(log => (<div key={log._id} className="text-xs p-2 bg-slate-50 border-l-2 border-blue-500 rounded"><span className="font-bold block text-blue-700">{log.user_username}</span><span className="block font-semibold">{log.action}</span><span className="text-[9px] text-slate-400">{formatIST(log.timestamp)}</span></div>))}</div>
                 </div>
             )}
->>>>>>> 997f5892f221bd36d1f223ba56ed01491a28ccbd
         </div>
       </main>
 
