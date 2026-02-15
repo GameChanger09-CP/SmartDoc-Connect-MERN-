@@ -33,7 +33,7 @@ export default function FacultyDashboard() {
       if(!file) return alert("Please select a PDF file.");
       const formData = new FormData(); 
       formData.append('report_file', file);
-      formData.append('note', note); // 🔥 Send Note
+      formData.append('note', note);
       try { await api.post(`/api/documents/${id}/dept_submit_report`, formData); alert("Sent!"); fetchDocs(); } catch(e) { alert("Failed."); }
   };
 
@@ -44,6 +44,20 @@ export default function FacultyDashboard() {
   };
 
   const getFileUrl = (path) => path ? `http://127.0.0.1:8000/${path.replace(/\\/g, '/')}` : '#';
+
+  // 🔥 FORCE DOWNLOAD 🔥
+  const handleForceDownload = (url, baseFilename) => {
+      const extension = url.split('.').pop().split(/\#|\?/)[0];
+      const filename = `${baseFilename}.${extension}`;
+      fetch(url).then(response => response.blob()).then(blob => {
+          const link = document.createElement("a");
+          link.href = URL.createObjectURL(blob);
+          link.download = filename;
+          document.body.appendChild(link);
+          link.click();
+          document.body.removeChild(link);
+      }).catch(() => window.open(url, '_blank'));
+  };
 
   return (
     <div className="min-h-screen bg-slate-50 font-sans pb-12">
@@ -68,7 +82,6 @@ export default function FacultyDashboard() {
                     <div className="p-6">
                         {doc.status === 'With_Faculty' && (
                             <div className="flex flex-col gap-4">
-                                {/* 🔥 NOTE INPUT FOR SUBMISSION 🔥 */}
                                 <input id={`note-${doc._id}`} className="w-full border p-2 rounded text-sm" placeholder="Add remarks for Dept Admin..." />
                                 <div className="flex flex-col lg:flex-row gap-6 items-center justify-between">
                                     <div className="w-full lg:w-2/3"><input type="file" id={`report-${doc._id}`} className="block w-full text-sm file:bg-blue-50 border-0 rounded-lg"/></div>
@@ -79,7 +92,18 @@ export default function FacultyDashboard() {
                                 </div>
                             </div>
                         )}
-                        {doc.status === 'Faculty_Reported' && <div className="bg-green-50 p-4 rounded text-green-800 font-bold">✅ Review Submitted</div>}
+                        {doc.status === 'Faculty_Reported' && (
+                            <div className="flex justify-between items-center">
+                                <div className="bg-green-50 p-3 rounded text-green-800 font-bold text-sm">✅ Review Submitted</div>
+                                {/* 🔥 DOWNLOAD OWN REPORT 🔥 */}
+                                {doc.dept_report && (
+                                    <div className="flex gap-2">
+                                        <a href={getFileUrl(doc.dept_report)} target="_blank" rel="noreferrer" className="text-xs bg-white text-purple-700 px-3 py-1.5 rounded border">View</a>
+                                        <button onClick={() => handleForceDownload(getFileUrl(doc.dept_report), `${doc.tracking_id}_report`)} className="text-xs bg-green-50 text-green-700 px-3 py-1.5 rounded border">Download</button>
+                                    </div>
+                                )}
+                            </div>
+                        )}
                     </div>
                 </div>
             ))}
@@ -91,19 +115,10 @@ export default function FacultyDashboard() {
           <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 backdrop-blur-sm p-4">
               <div className="bg-white p-6 rounded-xl w-full max-w-md max-h-[90vh] overflow-y-auto">
                   <div className="flex justify-between items-center mb-4 border-b pb-2"><h3 className="text-lg font-bold">Details</h3><button onClick={() => setInfoDoc(null)} className="text-xl">&times;</button></div>
-                  
-                  {/* NOTES */}
                   <div className="mb-4 bg-slate-50 p-3 rounded border max-h-40 overflow-y-auto">
                       <p className="text-xs font-bold text-slate-400 uppercase mb-2">Communication Log</p>
-                      {infoDoc.notes && infoDoc.notes.length > 0 ? infoDoc.notes.map((n, i) => (
-                          <div key={i} className="text-xs border-b border-slate-200 pb-2 mb-2 last:border-0">
-                              <span className="font-bold text-blue-700">{n.sender} ({n.role}): </span>
-                              <span className="text-slate-700">{n.message}</span>
-                              <div className="text-[9px] text-slate-400">{formatIST(n.timestamp)}</div>
-                          </div>
-                      )) : <p className="text-xs text-slate-400 italic">No notes.</p>}
+                      {infoDoc.notes && infoDoc.notes.length > 0 ? infoDoc.notes.map((n, i) => (<div key={i} className="text-xs border-b border-slate-200 pb-2 mb-2 last:border-0"><span className="font-bold text-blue-700">{n.sender} ({n.role}): </span><span className="text-slate-700">{n.message}</span><div className="text-[9px] text-slate-400">{formatIST(n.timestamp)}</div></div>)) : <p className="text-xs text-slate-400 italic">No notes.</p>}
                   </div>
-
                   <div className="space-y-4 text-sm">
                       <div className="flex justify-between"><span>Uploaded:</span><span className="font-mono">{formatIST(infoDoc.uploaded_at)}</span></div>
                       <button onClick={() => setInfoDoc(null)} className="w-full bg-gray-100 py-2 rounded font-bold">Close</button>
