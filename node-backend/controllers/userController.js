@@ -1,93 +1,114 @@
+const { User, Document, Department, ActivityLog } = require('../models');
 const bcrypt = require('bcryptjs');
-const { User, Department, ActivityLog, Document } = require('../models');
+const { sendMail } = require('../utils/mailer');
 
-// --- DASHBOARD STATS ---
+// --- DASHBOARD STATISTICS ---
 exports.getDashboardStats = async (req, res) => {
     try {
-        if (req.user.role !== 'Main_Admin') return res.status(403).json({ error: "Unauthorized" });
+        const pendingUsers = await User.countDocuments({ kyc_status: 'Pending', role: { $ne: 'Main_Admin' } });
+        
         const deptStats = await Document.aggregate([
-            { $match: { status: { $in: ['In_Progress', 'With_Faculty', 'Dept_Reported'] } } },
-            { $group: { _id: "$current_dept", count: { $sum: 1 } } },
-            { $lookup: { from: "departments", localField: "_id", foreignField: "_id", as: "dept_info" } },
-            { $unwind: "$dept_info" },
-            { $project: { name: "$dept_info.name", count: 1 } }
+            { $match: { status: 'In_Progress' } },
+            { $group: { _id: '$current_dept', count: { $sum: 1 } } },
+            { $lookup: { from: 'departments', localField: '_id', foreignField: '_id', as: 'dept' } },
+            { $unwind: '$dept' },
+            { $project: { name: '$dept.name', count: 1 } }
         ]);
-        const userCounts = {
-            clients: await User.countDocuments({ role: 'Client' }),
-            staff: await User.countDocuments({ role: { $in: ['Dept_Admin', 'Faculty'] } }),
-            pending: await User.countDocuments({ kyc_status: 'Pending' })
-        };
-        res.json({ deptStats, userCounts });
-    } catch (error) { res.status(500).json({ error: "Stats failed" }); }
+        
+        res.json({ pendingUsers, deptStats });
+    } catch (e) { res.status(500).json({ error: "Stats error" }); }
 };
 
-// --- GET PENDING USERS ---
+// --- PENDING USERS (For KYC) ---
 exports.getPendingUsers = async (req, res) => {
     try {
-        if (req.user.role !== 'Main_Admin') return res.status(403).json([]);
-        const users = await User.find({ kyc_status: 'Pending' }).populate('department', 'name');
+        const users = await User.find({ kyc_status: 'Pending', role: { $ne: 'Main_Admin' } });
         res.json(users);
-    } catch (error) { res.status(500).json({ error: "Failed" }); }
+    } catch (e) { res.status(500).json({ error: "Fetch failed" }); }
 };
 
-// --- GET FACULTY ---
-exports.getFaculty = async (req, res) => {
-    try {
-        if (req.user.role !== 'Dept_Admin') return res.status(403).json([]);
-        const faculty = await User.find({ role: 'Faculty', department: req.user.department });
-        res.json(faculty);
-    } catch (error) { res.status(500).json({ error: "Failed" }); }
-};
-
-// --- CREATE USER ---
+// --- CREATE USER (Admin Manual Provisioning) ---
 exports.createUser = async (req, res) => {
     try {
         const { username, email, password, role } = req.body;
         const hashedPassword = await bcrypt.hash(password, 10);
         
-        if (role === 'Dept_Admin') {
-            let dept = await Department.findOneAndUpdate({ name: username }, { keywords: username.toLowerCase() }, { upsert: true, returnDocument: 'after' });
-            await User.create({ username, email, password: hashedPassword, role, kyc_status: 'Verified', department: dept._id });
-        } else {
-            const data = { username, email, password: hashedPassword, role, kyc_status: 'Verified' };
-            if(role === 'Faculty') data.department = req.user.department;
-            await User.create(data);
-        }
-        res.status(201).json({ status: 'Created' });
-    } catch (error) { res.status(500).json({ error: "Failed" }); }
+        const newUser = await User.create({
+            username, email, password: hashedPassword, role, kyc_status: 'Verified' 
+        });
+
+        // Send Email with Credentials
+        const emailContent = `
+            <h3>Welcome to SmartDoc Connect</h3>
+            <p>Your account has been created by the Administrator.</p>
+            <p><b>Username:</b> ${username}</p>
+            <p><b>Password:</b> ${password}</p>
+            <p><b>Role:</b> ${role}</p>
+            <p>Please login and change your password.</p>
+        `;
+        sendMail(email, "Account Created", emailContent);
+
+        res.json({ status: "Created" });
+    } catch (e) {
+        if(e.code === 11000) return res.status(400).json({ error: "Username/Email exists" });
+        res.status(500).json({ error: "Creation failed" });
+    }
 };
 
 // --- APPROVE USER ---
 exports.approveUser = async (req, res) => {
     try {
-        const user = await User.findByIdAndUpdate(req.params.id, { kyc_status: 'Verified' });
-        if (user && user.role === 'Dept_Admin') {
-            await Department.findOneAndUpdate({ name: user.username }, { keywords: user.username.toLowerCase() }, { upsert: true });
-        }
+        await User.findByIdAndUpdate(req.params.id, { kyc_status: 'Verified' });
         res.json({ status: 'Approved' });
-    } catch (error) { res.status(500).json({ error: "Failed" }); }
+    } catch (e) { res.status(500).json({ error: "Approve failed" }); }
 };
 
-// --- 🔥 REJECT USER (DELETES RECORD) ---
+// --- REJECT USER (Delete) ---
 exports.rejectUser = async (req, res) => {
     try {
-        if (req.user.role !== 'Main_Admin') return res.status(403).json({ error: 'Unauthorized' });
-        // Delete user so they can re-register with same email/username
         await User.findByIdAndDelete(req.params.id);
-        res.json({ status: 'Rejected & Deleted' });
-    } catch (error) { res.status(500).json({ error: "Failed" }); }
+        res.json({ status: 'Rejected' });
+    } catch (e) { res.status(500).json({ error: "Reject failed" }); }
 };
 
+// --- GET FACULTY LIST ---
+exports.getFaculty = async (req, res) => {
+    try {
+        const faculty = await User.find({ role: 'Faculty', department: req.user.department });
+        res.json(faculty);
+    } catch (e) { res.status(500).json({ error: "Fetch failed" }); }
+};
+
+// --- GET DEPARTMENTS ---
 exports.getDepartments = async (req, res) => {
-    try { res.json(await Department.find()); } catch (e) { res.status(500).json({ error: "Failed" }); }
+    try {
+        const depts = await Department.find();
+        res.json(depts);
+    } catch (e) { res.status(500).json({ error: "Fetch failed" }); }
 };
 
+// --- GET SYSTEM LOGS ---
 exports.getLogs = async (req, res) => {
     try {
-        let query = {};
-        if (req.user.role === 'Main_Admin' && req.query.user_id) query = { user: req.query.user_id };
-        else if (req.user.role !== 'Main_Admin') query = { user: req.user._id };
-        const logs = await ActivityLog.find(query).populate('user', 'username role').sort({ timestamp: -1 });
+        const logs = await ActivityLog.find().populate('user', 'username').sort({ timestamp: -1 }).limit(50);
         res.json(logs);
-    } catch (error) { res.status(500).json({ error: "Failed" }); }
+    } catch (e) { res.status(500).json({ error: "Fetch failed" }); }
+};
+
+// 🔥 SEARCH USERS (For Offline Upload) 🔥
+exports.searchUsers = async (req, res) => {
+    try {
+        const { q } = req.query;
+        if (!q) return res.json([]);
+        
+        const users = await User.find({
+            role: 'Client',
+            $or: [
+                { username: { $regex: q, $options: 'i' } },
+                { email: { $regex: q, $options: 'i' } }
+            ]
+        }).select('username email _id');
+        
+        res.json(users);
+    } catch (e) { res.status(500).json({ error: "Search failed" }); }
 };

@@ -19,7 +19,11 @@ export default function DeptDashboard() {
 
   const fetchData = async () => {
     try {
-        const [docRes, facRes] = await Promise.all([api.get('/api/documents/'), api.get('/api/faculty/')]);
+        const [docRes, facRes] = await Promise.all([
+            api.get('/api/documents/'),
+            // 🔥 FIX: Corrected path to match backend structure
+            api.get('/api/users/faculty') 
+        ]);
         setDocs(Array.isArray(docRes.data) ? docRes.data : docRes.data.results || []);
         setFaculty(facRes.data || []);
     } catch (error) { console.error("Fetch error", error); }
@@ -48,7 +52,6 @@ export default function DeptDashboard() {
   const handleInstallmentChange = (index, value) => { const newInst = [...installments]; newInst[index].amount = value; setInstallments(newInst); };
   const getFileUrl = (path) => path ? `http://127.0.0.1:8000/${path.replace(/\\/g, '/')}` : '#';
 
-  // 🔥 FORCE DOWNLOAD 🔥
   const handleForceDownload = (url, baseFilename) => {
       const extension = url.split('.').pop().split(/\#|\?/)[0];
       const filename = `${baseFilename}.${extension}`;
@@ -67,7 +70,6 @@ export default function DeptDashboard() {
       <Navbar />
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         
-        {/* Stats (Same as before) */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
             <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 flex justify-between hover:shadow-md transition"><div><p className="text-slate-500 text-xs font-bold uppercase tracking-wider">Pending</p><h3 className="text-3xl font-extrabold text-blue-600">{docs.filter(d => d.status === 'In_Progress').length}</h3></div><div className="text-2xl bg-blue-50 p-3 rounded-xl">📄</div></div>
             <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 flex justify-between hover:shadow-md transition"><div><p className="text-slate-500 text-xs font-bold uppercase tracking-wider">Staff</p><h3 className="text-3xl font-extrabold text-orange-600">{faculty.length}</h3></div><div className="text-2xl bg-orange-50 p-3 rounded-xl">👨‍🏫</div></div>
@@ -75,16 +77,14 @@ export default function DeptDashboard() {
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-4 gap-8">
-            {/* Left Column (Forms) */}
             <div className="lg:col-span-1 space-y-6">
                 <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100">
                     <h3 className="font-bold text-slate-800 mb-4 border-b pb-2">Add Faculty</h3>
-                    <form onSubmit={handleCreateFaculty} className="space-y-3"><input className="w-full border p-2.5 rounded-lg text-sm bg-slate-50" placeholder="Username" value={newFaculty.username} onChange={e => setNewFaculty({...newFaculty, username: e.target.value})} /><input className="w-full border p-2.5 rounded-lg text-sm bg-slate-50" placeholder="Email" type="email" value={newFaculty.email} onChange={e => setNewFaculty({...newFaculty, email: e.target.value})} /><input className="w-full border p-2.5 rounded-lg text-sm bg-slate-50" placeholder="Password" type="password" value={newFaculty.password} onChange={e => setNewFaculty({...newFaculty, password: e.target.value})} /><button className="w-full bg-orange-600 hover:bg-orange-700 text-white py-2.5 rounded-lg font-bold text-sm transition">Create</button></form>
+                    <form onSubmit={handleCreateFaculty} className="space-y-3"><input className="w-full border p-2.5 rounded-lg text-sm bg-slate-50" placeholder="Username" value={newFaculty.username} onChange={e => setNewFaculty({...newFaculty, username: e.target.value})} required /><input className="w-full border p-2.5 rounded-lg text-sm bg-slate-50" placeholder="Email" type="email" value={newFaculty.email} onChange={e => setNewFaculty({...newFaculty, email: e.target.value})} required /><input className="w-full border p-2.5 rounded-lg text-sm bg-slate-50" placeholder="Password" type="password" value={newFaculty.password} onChange={e => setNewFaculty({...newFaculty, password: e.target.value})} required /><button className="w-full bg-orange-600 hover:bg-orange-700 text-white py-2.5 rounded-lg font-bold text-sm transition">Create</button></form>
                 </div>
                 <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100"><h3 className="font-bold text-slate-800 mb-4 border-b pb-2">Your Team</h3><div className="space-y-2 max-h-60 overflow-y-auto custom-scrollbar">{faculty.map(fac => (<div key={fac._id} className="p-2 bg-slate-50 border rounded-lg text-xs font-bold text-slate-700 flex justify-between"><span className="flex items-center gap-2"><span className="w-2 h-2 bg-green-500 rounded-full"></span> {fac.username}</span></div>))}</div></div>
             </div>
 
-            {/* Right Column (Workflow) */}
             <div className="lg:col-span-3 space-y-6">
                 <div className="flex justify-between items-center bg-white p-4 rounded-xl border border-slate-100 shadow-sm"><h3 className="font-bold text-slate-800">Task Inbox</h3><select value={filterStatus} onChange={(e) => setFilterStatus(e.target.value)} className="text-sm border-slate-200 rounded-lg py-1.5 px-3 bg-white font-semibold text-slate-600 outline-none border shadow-sm"><option value="All">All Tasks</option><option value="Action_Required">Action Required</option><option value="With_Faculty">Assigned</option><option value="Review_Ready">Ready for Approval</option></select></div>
 
@@ -129,7 +129,6 @@ export default function DeptDashboard() {
                                     <div className="bg-purple-50 p-3 rounded-lg border border-purple-100 flex justify-between items-center">
                                         <div className="flex items-center gap-2"><span className="text-xl">📑</span><div><p className="text-xs font-bold text-purple-800 uppercase">Report Submitted</p><p className="text-[10px] text-purple-600">By: {doc.current_faculty?.username}</p></div></div>
                                         
-                                        {/* 🔥 DOWNLOAD BUTTONS 🔥 */}
                                         {doc.dept_report && (
                                             <div className="flex gap-2">
                                                 <a href={getFileUrl(doc.dept_report)} target="_blank" rel="noreferrer" className="text-xs bg-white text-purple-700 px-3 py-1 rounded-lg border border-purple-200 font-bold hover:bg-purple-50">View</a>

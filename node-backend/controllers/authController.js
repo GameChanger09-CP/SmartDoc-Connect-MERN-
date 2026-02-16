@@ -13,7 +13,8 @@ exports.login = async (req, res) => {
         return res.status(400).json({ error: 'Invalid Credentials' });
     }
     
-    if (user.role !== 'Main_Admin' && user.kyc_status !== 'Verified') {
+    // Only Clients or Verified internal staff can login. Main_Admin always can.
+    if (user.role !== 'Main_Admin' && user.role !== 'Client' && user.kyc_status !== 'Verified') {
         return res.status(403).json({ error: 'Account Pending Approval by System Administrator.' });
     }
     
@@ -23,24 +24,46 @@ exports.login = async (req, res) => {
     res.json({ token, role: user.role, username: user.username });
 };
 
-// --- REGISTER ---
+// --- REGISTER (WITH EMAIL CREDENTIALS) ---
 exports.register = async (req, res) => {
     const { username, email, password, role } = req.body;
-
-    if (role === 'Main_Admin' || role === 'Dept_Admin' || role === 'Faculty') {
-        return res.status(403).json({ error: `Security Alert: ${role} accounts cannot be created publicly.` });
-    }
 
     const hashedPassword = await bcrypt.hash(password, 10);
     const kyc_status = 'Pending'; 
     const gov_id = req.file ? req.file.path : null;
 
     try {
-        await User.create({ username, email, password: hashedPassword, role: 'Client', kyc_status, gov_id });
-        res.status(201).json({ status: 'Registered successfully' });
+        const user = await User.create({ 
+            username, 
+            email, 
+            password: hashedPassword, 
+            role: role || 'Client', 
+            kyc_status, 
+            gov_id 
+        });
+
+        // 🔥 SEND CREDENTIALS EMAIL 🔥
+        const emailContent = `
+            <div style="font-family: Arial, sans-serif; padding: 20px; color: #333;">
+                <h2 style="color: #1e3a8a;">Welcome to SmartDoc Connect</h2>
+                <p>Your account has been successfully created.</p>
+                <div style="background: #f3f4f6; padding: 15px; border-radius: 8px; margin: 20px 0;">
+                    <p style="margin: 5px 0;"><strong>Username:</strong> ${username}</p>
+                    <p style="margin: 5px 0;"><strong>Password:</strong> ${password}</p>
+                    <p style="margin: 5px 0;"><strong>Role:</strong> ${role || 'Client'}</p>
+                </div>
+                <p>Please log in and change your password immediately for security.</p>
+                <a href="http://localhost:5173/login" style="background: #2563eb; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px;">Login Now</a>
+            </div>
+        `;
+        
+        await sendMail(email, "Your Account Credentials", emailContent);
+
+        res.status(201).json({ status: 'Registered successfully', userId: user._id });
     } catch (e) { 
         if (e.code === 11000) return res.status(400).json({ error: 'Username already exists.' });
-        res.status(500).json({ error: 'Server error.' }); 
+        console.error("Register Error:", e);
+        res.status(500).json({ error: 'Server error during registration.' }); 
     }
 };
 

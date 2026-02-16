@@ -1,34 +1,32 @@
 import React from 'react';
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
-
+import { Routes, Route } from 'react-router-dom';
 import Landing from './pages/Landing';
-import About from './pages/About'; 
 import Login from './pages/Login';
 import Signup from './pages/Signup';
+import About from './pages/About';
 import ClientDashboard from './pages/ClientDashboard';
 import AdminDashboard from './pages/AdminDashboard';
 import DeptDashboard from './pages/DeptDashboard';
 import FacultyDashboard from './pages/FacultyDashboard';
+import PublicPayment from './pages/PublicPayment';
 import ProtectedRoute from './components/ProtectedRoute';
 
-function App() {
+export default function App() {
   return (
-    <BrowserRouter>
-      <Routes>
-        <Route path="/" element={<Landing />} />
-        <Route path="/about" element={<About />} />
-        <Route path="/login" element={<Login />} />
-        <Route path="/signup" element={<Signup />} />
-        
-        <Route path="/client" element={<ProtectedRoute><ClientDashboard /></ProtectedRoute>} />
-        <Route path="/admin" element={<ProtectedRoute><AdminDashboard /></ProtectedRoute>} />
-        <Route path="/dept" element={<ProtectedRoute><DeptDashboard /></ProtectedRoute>} />
-        <Route path="/faculty" element={<ProtectedRoute><FacultyDashboard /></ProtectedRoute>} />
+    <Routes>
+      <Route path="/" element={<Landing />} />
+      <Route path="/login" element={<Login />} />
+      <Route path="/signup" element={<Signup />} />
+      <Route path="/about" element={<About />} />
+      
+      {/* Public Payment Route (No Login Required) */}
+      <Route path="/pay/:docId/:installmentId" element={<PublicPayment />} />
 
-        <Route path="*" element={<Navigate to="/" />} />
-      </Routes>
-    </BrowserRouter>
+      {/* Protected Routes */}
+      <Route path="/client" element={<ProtectedRoute><ClientDashboard /></ProtectedRoute>} />
+      <Route path="/admin" element={<ProtectedRoute><AdminDashboard /></ProtectedRoute>} />
+      <Route path="/dept" element={<ProtectedRoute><DeptDashboard /></ProtectedRoute>} />
+      <Route path="/faculty" element={<ProtectedRoute><FacultyDashboard /></ProtectedRoute>} />
+    </Routes>
   );
 }
-
-export default App;

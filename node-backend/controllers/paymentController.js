@@ -33,11 +33,25 @@ exports.requestPayment = async (req, res) => {
         doc.fee_total = totalAmount;
         doc.fee_status = 'Unpaid';
         doc.installments = newInstallments;
+        
+        // Save first so Mongoose generates the _id for installments
         await doc.save();
 
-        sendMail(doc.user.email, "Payment Request", `Fee of ₹${totalAmount} requested.`);
+        // 🔥 FIX: Use 'doc.installments' (which has _id) instead of 'newInstallments' 🔥
+        const paymentLink = `http://localhost:5173/pay/${doc._id}/${doc.installments[0]._id}`;
+        
+        sendMail(doc.user.email, "Payment Request", `
+            <h3>Fee Requested: ₹${totalAmount}</h3>
+            <p>Please pay the first installment of ₹${doc.installments[0].amount}.</p>
+            <p><a href="${paymentLink}" style="background:#2563eb;color:white;padding:10px 20px;text-decoration:none;border-radius:5px;">Pay Now (Quick Link)</a></p>
+            <p>Or login to your dashboard to pay.</p>
+        `);
+
         res.json({ status: 'Generated' });
-    } catch (error) { res.status(500).json({ error: "Failed to generate payment" }); }
+    } catch (error) { 
+        console.error(error);
+        res.status(500).json({ error: "Failed to generate payment" }); 
+    }
 };
 
 exports.verifyPayment = async (req, res) => {
@@ -50,6 +64,9 @@ exports.verifyPayment = async (req, res) => {
 
         const doc = await Document.findById(doc_id).populate('user');
         const installment = doc.installments.id(installment_id);
+        
+        if (!installment) return res.status(404).json({ error: "Installment not found" });
+
         installment.status = 'Paid';
         installment.razorpay_payment_id = razorpay_payment_id;
         installment.paid_at = new Date();
@@ -58,10 +75,19 @@ exports.verifyPayment = async (req, res) => {
         doc.fee_status = allPaid ? 'Paid' : 'Partial';
         
         await doc.save();
-        await ActivityLog.create({ user: req.user._id, action: 'Paid', details: `Paid ₹${installment.amount}` });
+        
+        const payerId = req.user ? req.user._id : doc.user._id;
+        await ActivityLog.create({ user: payerId, action: 'Paid', details: `Paid ₹${installment.amount}` });
         
         res.json({ status: 'Verified' });
-    } catch (error) { res.status(500).json({ error: "Verification failed" }); }
+    } catch (error) { 
+        console.error(error);
+        res.status(500).json({ error: "Verification failed" }); 
+    }
+};
+
+exports.verifyPublicPayment = async (req, res) => {
+    exports.verifyPayment(req, res);
 };
 
 exports.getKey = (req, res) => { res.status(200).json({ key: process.env.RAZORPAY_KEY_ID }); };
