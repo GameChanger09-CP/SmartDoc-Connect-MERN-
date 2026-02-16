@@ -28,7 +28,10 @@ export default function AdminDashboard() {
   const [routingDoc, setRoutingDoc] = useState(null);
   const [infoDoc, setInfoDoc] = useState(null); 
   const [paymentDoc, setPaymentDoc] = useState(null); 
-  const [installments, setInstallments] = useState([{ amount: '' }]); 
+  
+  // Index 0 = Advance, Index 1+ = Remaining
+  const [installments, setInstallments] = useState([{ amount: '' }, { amount: '' }]); 
+  
   const [newUser, setNewUser] = useState({ username: '', email: '', password: '', role: 'Client' });
   const [actionNote, setActionNote] = useState("");
 
@@ -114,19 +117,16 @@ export default function AdminDashboard() {
 
   const handlePaymentRequest = async (e) => {
       e.preventDefault();
-      const amounts = installments.map(i => Number(i.amount)).filter(a => a > 0);
-      if (amounts.length === 0) return alert("Please enter valid amounts.");
-      try { await api.post(`/api/documents/${paymentDoc._id}/request_payment`, { installments: amounts }); alert("Payment requested!"); setPaymentDoc(null); setInstallments([{ amount: '' }]); fetchData(); } catch (error) { alert("Failed."); }
+      // Allow 0 for Advance
+      const amounts = installments.map(i => i.amount === '' ? 0 : Number(i.amount));
+      try { await api.post(`/api/documents/${paymentDoc._id}/request_payment`, { installments: amounts }); alert("Payment Structure Generated!"); setPaymentDoc(null); setInstallments([{ amount: '' }, { amount: '' }]); fetchData(); } catch (error) { alert("Failed."); }
   };
 
-  // 🔥 NEW: SEND REMINDER HANDLER 🔥
   const handleSendReminder = async (docId, installmentId) => {
-      if(!window.confirm("Send payment reminder email to user?")) return;
+      if(!window.confirm("Send payment reminder email?")) return;
       try {
           await api.post(`/api/documents/${docId}/remind_payment/${installmentId}`);
           alert("Reminder Sent Successfully! 📧");
-          setInfoDoc(null); // Close modal to refresh or keep open if preferred
-          fetchData();
       } catch(e) { alert("Failed to send reminder."); }
   };
 
@@ -160,11 +160,9 @@ export default function AdminDashboard() {
   const handleAdminUpload = async (e) => {
       e.preventDefault();
       if(!selectedUser || !uploadFile) return alert("Select user and file");
-      
       const formData = new FormData();
       formData.append('file', uploadFile);
       formData.append('target_user_id', selectedUser._id);
-
       try {
           await api.post('/api/documents/', formData);
           alert("Document Uploaded for Client!");
@@ -206,7 +204,6 @@ export default function AdminDashboard() {
                         <div className="flex items-center gap-2"><h3 className="font-bold text-slate-800">Master Document Control</h3><span className="bg-slate-100 text-slate-600 text-xs px-2 py-1 rounded font-bold">{filteredDocs.length} Found</span></div>
                         <select value={filterStatus} onChange={(e) => setFilterStatus(e.target.value)} className="text-xs border-slate-200 rounded-lg py-2 px-3 bg-slate-50 font-semibold text-slate-600 outline-none border"><option value="All">All Documents</option><option value="Action_Required">Action Required</option><option value="In_Progress">Active Processing</option><option value="Completed">Completed</option><option value="Blocked">Blocked</option></select>
                     </div>
-
                     <div className="overflow-x-auto max-h-[600px]">
                         <table className="w-full text-left text-sm">
                             <thead className="bg-slate-50 text-slate-500 uppercase text-xs sticky top-0"><tr><th className="p-4">Tracking ID</th><th className="p-4">Status & Fee</th><th className="p-4 text-center">Controls</th></tr></thead>
@@ -216,12 +213,7 @@ export default function AdminDashboard() {
                                         <td className="p-4">
                                             <a href={getFileUrl(doc.file)} target="_blank" rel="noopener noreferrer" className="font-mono text-blue-600 font-bold hover:underline">{doc.tracking_id}</a>
                                             <div className="text-[10px] text-slate-400">Owner: {doc.client_username}</div>
-                                            {doc.dept_report && (
-                                                <div className="flex gap-2 mt-1">
-                                                    <a href={getFileUrl(doc.dept_report)} target="_blank" rel="noopener noreferrer" className="text-[10px] bg-purple-50 text-purple-700 px-2 py-0.5 rounded border border-purple-200 font-bold hover:bg-purple-100 transition">View</a>
-                                                    <button onClick={() => handleForceDownload(getFileUrl(doc.dept_report), `${doc.tracking_id}_final`)} className="text-[10px] bg-green-50 text-green-700 px-2 py-0.5 rounded border border-green-200 font-bold hover:bg-green-100 transition cursor-pointer">Download</button>
-                                                </div>
-                                            )}
+                                            {doc.dept_report && (<div className="flex gap-2 mt-1"><a href={getFileUrl(doc.dept_report)} target="_blank" rel="noopener noreferrer" className="text-[10px] bg-purple-50 text-purple-700 px-2 py-0.5 rounded border border-purple-200 font-bold hover:bg-purple-100 transition">View</a><button onClick={() => handleForceDownload(getFileUrl(doc.dept_report), `${doc.tracking_id}_final`)} className="text-[10px] bg-green-50 text-green-700 px-2 py-0.5 rounded border border-green-200 font-bold hover:bg-green-100 transition cursor-pointer">Download</button></div>)}
                                         </td>
                                         <td className="p-4">
                                             <div className="flex flex-col gap-1 items-start">
@@ -232,15 +224,9 @@ export default function AdminDashboard() {
                                         <td className="p-4">
                                             <div className="flex items-center justify-center gap-2">
                                                 <button onClick={() => setInfoDoc(doc)} className="w-8 h-8 rounded-full bg-slate-100 text-slate-500 hover:bg-blue-100 hover:text-blue-600 transition flex items-center justify-center" title="Details">ℹ️</button>
-                                                
-                                                {doc.fee_total === 0 ? (
-                                                    <button onClick={() => { setPaymentDoc(doc); setInstallments([{amount: ''}]); }} className="w-8 h-8 rounded-full bg-green-100 text-green-600 hover:bg-green-200 transition flex items-center justify-center font-bold text-sm" title="Request Payment">₹</button>
-                                                ) : <div className="w-8"></div>}
-
+                                                {doc.fee_total === 0 ? (<button onClick={() => { setPaymentDoc(doc); setInstallments([{amount: ''}, {amount: ''}]); }} className="w-8 h-8 rounded-full bg-green-100 text-green-600 hover:bg-green-200 transition flex items-center justify-center font-bold text-sm" title="Request Payment">₹</button>) : <div className="w-8"></div>}
                                                 <button onClick={() => toggleFreeze(doc._id)} className="w-8 h-8 rounded-full bg-gray-100 text-gray-500 hover:bg-gray-200 transition flex items-center justify-center text-sm" title={doc.is_frozen ? "Unfreeze" : "Freeze"}>{doc.is_frozen ? "🔒" : "❄️"}</button>
-                                                
                                                 <button onClick={() => setRoutingDoc(doc)} className="px-3 py-1.5 rounded-lg bg-blue-50 text-blue-600 text-xs font-bold border border-blue-200 hover:bg-blue-100 transition">Route</button>
-                                                
                                                 <button onClick={() => declineDoc(doc._id)} className="w-8 h-8 rounded-full bg-red-100 text-red-600 hover:bg-red-200 transition flex items-center justify-center font-bold" title="Decline">✕</button>
                                             </div>
                                         </td>
@@ -248,32 +234,6 @@ export default function AdminDashboard() {
                                 ))}
                             </tbody>
                         </table>
-                    </div>
-                </div>
-
-                <div className="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
-                    <div className="p-6 border-b border-slate-100"><h3 className="font-bold text-slate-800">User Directory</h3></div>
-                    <div className="max-h-96 overflow-y-auto divide-y divide-slate-100">
-                        {users.map(u => (
-                            <div key={u._id} className="p-4 flex justify-between items-center hover:bg-slate-50 transition">
-                                <div className="flex items-center gap-3">
-                                    <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold text-white ${u.role === 'Dept_Admin' ? 'bg-orange-500' : 'bg-blue-500'}`}>{u.username[0].toUpperCase()}</div>
-                                    <div><p className="text-sm font-bold text-slate-800">{u.username}</p><p className="text-[10px] text-slate-500 uppercase">{u.role.replace('_', ' ')} • {u.kyc_status}</p></div>
-                                </div>
-                                <div className="flex items-center gap-2">
-                                    <button onClick={() => setViewUserHistory(u)} className="text-[10px] bg-white border border-slate-200 px-3 py-1 rounded font-bold text-slate-600 hover:bg-slate-50 transition shadow-sm">History</button>
-                                    
-                                    {u.gov_id && (
-                                        <div className="flex gap-1">
-                                            <a href={getFileUrl(u.gov_id)} target="_blank" rel="noopener noreferrer" className="text-[10px] bg-purple-50 text-purple-700 border border-purple-200 px-2 py-1 rounded font-bold hover:bg-purple-100">View ID</a>
-                                            <button onClick={() => handleForceDownload(getFileUrl(u.gov_id), `${u.username}_id`)} className="text-[10px] bg-green-50 text-green-700 border border-green-200 px-2 py-1 rounded font-bold hover:bg-green-100">⬇</button>
-                                        </div>
-                                    )}
-
-                                    {u.kyc_status === 'Pending' && (<><button onClick={() => handleUserAction(u._id, 'approve')} className="text-green-600 bg-green-50 px-2 py-1 rounded text-xs hover:bg-green-100">✓</button><button onClick={() => handleUserAction(u._id, 'reject')} className="text-red-600 bg-red-50 px-2 py-1 rounded text-xs hover:bg-red-100">✗</button></>)}
-                                </div>
-                            </div>
-                        ))}
                     </div>
                 </div>
             </div>
@@ -293,11 +253,46 @@ export default function AdminDashboard() {
 
       {/* --- MODALS --- */}
       {viewUserHistory && <ProfileModal targetUser={viewUserHistory} onClose={() => setViewUserHistory(null)} />}
-      {routingDoc && (/* ... Routing Modal Content ... */ <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 backdrop-blur-sm"><div className="bg-white p-8 rounded-xl shadow-2xl w-96 animate-scale-in"><h3 className="text-xl font-bold mb-4">Route Document</h3><form onSubmit={handleRouteSubmit}><select name="dept" className="w-full border p-3 rounded-lg mb-4 bg-slate-50" required><option value="">-- Choose Department --</option>{depts.map(d => (<option key={d._id} value={d._id}>{d.name}</option>))}</select><textarea className="w-full border p-3 rounded-lg mb-6 bg-slate-50 text-sm h-24 resize-none focus:ring-2 focus:ring-blue-500 outline-none" placeholder="Add remarks for Dept Admin..." value={actionNote} onChange={(e) => setActionNote(e.target.value)}></textarea><div className="flex gap-3 justify-end"><button type="button" onClick={() => setRoutingDoc(null)} className="px-4 py-2 text-slate-600 font-bold">Cancel</button><button type="submit" className="px-4 py-2 bg-blue-600 text-white font-bold rounded-lg shadow">Confirm Route</button></div></form></div></div>)}
-      {paymentDoc && (/* ... Payment Modal Content ... */ <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 backdrop-blur-sm"><div className="bg-white p-8 rounded-xl shadow-2xl w-[400px] animate-scale-in max-h-[90vh] overflow-y-auto"><h3 className="text-xl font-bold mb-2 text-slate-800">Generate Fee Request</h3><form onSubmit={handlePaymentRequest}><div className="space-y-3 mb-6">{installments.map((inst, index) => (<div key={index} className="flex items-center gap-2"><div className="flex-grow"><label className="block text-xs font-bold mb-1 text-slate-500">Installment {index + 1} Amount (₹)</label><input type="number" min="1" value={inst.amount} onChange={e => handleInstallmentChange(index, e.target.value)} className="w-full border border-slate-300 p-2 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" required placeholder="e.g. 500" /></div>{installments.length > 1 && <button type="button" onClick={() => handleRemoveInstallment(index)} className="mt-5 text-red-500 hover:text-red-700 font-bold text-xl">&times;</button>}</div>))}</div><button type="button" onClick={handleAddInstallment} className="text-xs font-bold text-blue-600 border border-blue-600 px-3 py-1.5 rounded-lg hover:bg-blue-50 transition w-full mb-6">+ Add Another Installment</button><div className="flex gap-3 justify-end pt-4 border-t border-slate-100"><button type="button" onClick={() => setPaymentDoc(null)} className="px-4 py-2 text-slate-600 font-bold hover:bg-slate-100 rounded-lg">Cancel</button><button type="submit" className="px-4 py-2 bg-green-600 text-white font-bold rounded-lg shadow hover:bg-green-700">Send Request</button></div></form></div></div>)}
-      {showUploadModal && (/* ... Upload Modal Content ... */ <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 backdrop-blur-sm"><div className="bg-white p-8 rounded-xl shadow-2xl w-96 animate-scale-in"><h3 className="text-xl font-bold mb-4">Offline Document Upload</h3>{!selectedUser ? (<div className="mb-4 relative"><label className="block text-xs font-bold mb-1">Find Client (Name/Email)</label><input className="w-full border p-2 rounded" value={userQuery} onChange={e => handleSearchUser(e.target.value)} placeholder="Type to search..." />{searchResults.length > 0 && (<div className="absolute w-full bg-white border shadow-lg mt-1 max-h-40 overflow-y-auto z-10 rounded">{searchResults.map(u => (<div key={u._id} onClick={() => { setSelectedUser(u); setSearchResults([]); }} className="p-2 hover:bg-blue-50 cursor-pointer text-sm">{u.username} <span className="text-gray-400 text-xs">({u.email})</span></div>))}</div>)}<div className="mt-2 text-center text-xs text-gray-500">User not found? Create them in 'Provision User' first.</div></div>) : (<div className="mb-4 bg-blue-50 p-3 rounded flex justify-between items-center"><span className="font-bold text-blue-800 text-sm">{selectedUser.username}</span><button onClick={() => setSelectedUser(null)} className="text-red-500 text-xs font-bold">Change</button></div>)}<form onSubmit={handleAdminUpload}><input type="file" required className="w-full mb-4 text-sm" onChange={e => setUploadFile(e.target.files[0])} /><div className="flex gap-3 justify-end"><button type="button" onClick={() => setShowUploadModal(false)} className="px-4 py-2 text-slate-600 font-bold">Cancel</button><button disabled={!selectedUser} className="px-4 py-2 bg-blue-600 text-white font-bold rounded-lg shadow disabled:opacity-50">Upload</button></div></form></div></div>)}
+      {routingDoc && (/* ... Routing Modal ... */ <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 backdrop-blur-sm"><div className="bg-white p-8 rounded-xl shadow-2xl w-96 animate-scale-in"><h3 className="text-xl font-bold mb-4">Route Document</h3><form onSubmit={handleRouteSubmit}><select name="dept" className="w-full border p-3 rounded-lg mb-4 bg-slate-50" required><option value="">-- Choose Department --</option>{depts.map(d => (<option key={d._id} value={d._id}>{d.name}</option>))}</select><textarea className="w-full border p-3 rounded-lg mb-6 bg-slate-50 text-sm h-24 resize-none focus:ring-2 focus:ring-blue-500 outline-none" placeholder="Add remarks for Dept Admin..." value={actionNote} onChange={(e) => setActionNote(e.target.value)}></textarea><div className="flex gap-3 justify-end"><button type="button" onClick={() => setRoutingDoc(null)} className="px-4 py-2 text-slate-600 font-bold">Cancel</button><button type="submit" className="px-4 py-2 bg-blue-600 text-white font-bold rounded-lg shadow">Confirm Route</button></div></form></div></div>)}
       
-      {/* 🔥 INFO MODAL WITH NOTIFY BUTTON 🔥 */}
+      {/* 🔥 PAYMENT GENERATION MODAL (Updated Labels) 🔥 */}
+      {paymentDoc && (
+        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 backdrop-blur-sm">
+            <div className="bg-white p-8 rounded-xl shadow-2xl w-[400px] animate-scale-in max-h-[90vh] overflow-y-auto">
+                <h3 className="text-xl font-bold mb-4 text-slate-800 border-b pb-2">Generate Fee Structure</h3>
+                <form onSubmit={handlePaymentRequest}>
+                    <div className="space-y-4 mb-6">
+                        {installments.map((inst, index) => (
+                            <div key={index} className="flex flex-col gap-1">
+                                {/* LABEL LOGIC: Index 0 is Advance, others are Installments */}
+                                <label className={`block text-xs font-bold uppercase mb-1 ${index===0 ? 'text-blue-600' : 'text-slate-500'}`}>
+                                    {index === 0 ? '✨ Advance Amount (Paid Now)' : `Future Installment #${index} (Paid Later)`}
+                                </label>
+                                <div className="flex items-center gap-2">
+                                    <input 
+                                        type="number" 
+                                        min="0"
+                                        value={inst.amount} 
+                                        onChange={e => handleInstallmentChange(index, e.target.value)} 
+                                        className={`w-full border p-2 rounded-lg focus:ring-2 outline-none ${index===0 ? 'border-blue-300 focus:ring-blue-500 bg-blue-50' : 'border-slate-300 focus:ring-slate-500'}`}
+                                        placeholder={index === 0 ? "e.g. 500 (Can be 0)" : "e.g. 2000"} 
+                                    />
+                                    {index > 0 && <button type="button" onClick={() => handleRemoveInstallment(index)} className="text-red-500 font-bold text-xl hover:text-red-700">&times;</button>}
+                                </div>
+                                {index === 0 && <p className="text-[10px] text-slate-400">Enter 0 if no advance is required.</p>}
+                            </div>
+                        ))}
+                    </div>
+                    <button type="button" onClick={handleAddInstallment} className="text-xs font-bold text-slate-600 border border-slate-300 px-3 py-2 rounded-lg hover:bg-slate-50 transition w-full mb-6 border-dashed">+ Add Another Future Installment</button>
+                    <div className="flex gap-3 justify-end pt-4 border-t border-slate-100"><button type="button" onClick={() => setPaymentDoc(null)} className="px-4 py-2 text-slate-600 font-bold hover:bg-slate-100 rounded-lg">Cancel</button><button type="submit" className="px-4 py-2 bg-green-600 text-white font-bold rounded-lg shadow hover:bg-green-700">Create Plan</button></div>
+                </form>
+            </div>
+        </div>
+      )}
+
+      {showUploadModal && (/* ... Upload Modal ... */ <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 backdrop-blur-sm"><div className="bg-white p-8 rounded-xl shadow-2xl w-96 animate-scale-in"><h3 className="text-xl font-bold mb-4">Offline Document Upload</h3>{!selectedUser ? (<div className="mb-4 relative"><label className="block text-xs font-bold mb-1">Find Client (Name/Email)</label><input className="w-full border p-2 rounded" value={userQuery} onChange={e => handleSearchUser(e.target.value)} placeholder="Type to search..." />{searchResults.length > 0 && (<div className="absolute w-full bg-white border shadow-lg mt-1 max-h-40 overflow-y-auto z-10 rounded">{searchResults.map(u => (<div key={u._id} onClick={() => { setSelectedUser(u); setSearchResults([]); }} className="p-2 hover:bg-blue-50 cursor-pointer text-sm">{u.username} <span className="text-gray-400 text-xs">({u.email})</span></div>))}</div>)}<div className="mt-2 text-center text-xs text-gray-500">User not found? Create them in 'Provision User' first.</div></div>) : (<div className="mb-4 bg-blue-50 p-3 rounded flex justify-between items-center"><span className="font-bold text-blue-800 text-sm">{selectedUser.username}</span><button onClick={() => setSelectedUser(null)} className="text-red-500 text-xs font-bold">Change</button></div>)}<form onSubmit={handleAdminUpload}><input type="file" required className="w-full mb-4 text-sm" onChange={e => setUploadFile(e.target.files[0])} /><div className="flex gap-3 justify-end"><button type="button" onClick={() => setShowUploadModal(false)} className="px-4 py-2 text-slate-600 font-bold">Cancel</button><button disabled={!selectedUser} className="px-4 py-2 bg-blue-600 text-white font-bold rounded-lg shadow disabled:opacity-50">Upload</button></div></form></div></div>)}
+      
+      {/* 🔥 INFO MODAL WITH PAYMENT SUMMARY 🔥 */}
       {infoDoc && (
           <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 backdrop-blur-sm p-4">
               <div className="bg-white p-6 rounded-xl w-[500px] shadow-2xl animate-scale-in">
@@ -305,28 +300,24 @@ export default function AdminDashboard() {
                   <div className="mb-4 bg-slate-50 p-3 rounded-lg border border-slate-200 max-h-40 overflow-y-auto"><p className="text-xs font-bold text-slate-400 uppercase mb-2">Communication Log</p>{infoDoc.notes && infoDoc.notes.length > 0 ? infoDoc.notes.map((n, i) => (<div key={i} className="text-xs border-b border-slate-200 pb-2 mb-2 last:border-0"><span className="font-bold text-blue-700">{n.sender} ({n.role}): </span><span className="text-slate-700">{n.message}</span><div className="text-[9px] text-slate-400 mt-0.5">{formatIST(n.timestamp)}</div></div>)) : <p className="text-xs text-slate-400 italic">No notes available.</p>}</div>
                   <div className="space-y-4 text-sm">
                       <div className="bg-blue-50 p-3 rounded-lg border border-blue-100 flex justify-between"><div><p className="text-xs font-bold text-blue-800 uppercase">ID</p><p className="font-mono text-lg font-bold text-blue-900">{infoDoc.tracking_id}</p></div><div className="text-right"><p className="text-xs font-bold text-blue-800 uppercase">Fee</p><p className="font-bold">{infoDoc.fee_status}</p></div></div>
-                      <div className="bg-slate-50 p-4 rounded-lg border border-slate-200 space-y-3">
-                          <h4 className="text-xs font-bold text-slate-500 uppercase border-b pb-2">Timeline Events</h4>
-                          <div className="flex justify-between"><span className="text-slate-600">Uploaded:</span><span className="font-mono">{formatIST(infoDoc.uploaded_at)}</span></div>
-                          <div className="flex justify-between"><span className="text-slate-600">Sent to Dept:</span><span className="font-mono">{infoDoc.sent_to_dept_at ? formatIST(infoDoc.sent_to_dept_at) : '-'}</span></div>
-                          <div className="flex justify-between pl-4 border-l-2 border-yellow-200"><span className="text-slate-600">↳ Faculty Assigned:</span><span className="font-mono text-xs">{infoDoc.assigned_to_faculty_at ? formatIST(infoDoc.assigned_to_faculty_at) : '-'}</span></div>
-                          <div className="flex justify-between pl-4 border-l-2 border-purple-200"><span className="text-slate-600">↳ Faculty Reported:</span><span className="font-mono text-xs">{infoDoc.faculty_processed_at ? formatIST(infoDoc.faculty_processed_at) : '-'}</span></div>
-                          <div className="flex justify-between"><span className="text-slate-600">Dept Approved:</span><span className="font-mono">{infoDoc.dept_processed_at ? formatIST(infoDoc.dept_processed_at) : '-'}</span></div>
-                          <div className="flex justify-between border-t pt-2 mt-2"><span className="text-slate-800 font-bold">Completed:</span><span className="font-mono font-bold text-green-600">{infoDoc.final_report_sent_at ? formatIST(infoDoc.final_report_sent_at) : '-'}</span></div>
-                      </div>
+                      <div className="bg-slate-50 p-4 rounded-lg border border-slate-200 space-y-3"><h4 className="text-xs font-bold text-slate-500 uppercase border-b pb-2">Timeline Events</h4><div className="flex justify-between"><span className="text-slate-600">Uploaded:</span><span className="font-mono">{formatIST(infoDoc.uploaded_at)}</span></div><div className="flex justify-between"><span className="text-slate-600">Sent to Dept:</span><span className="font-mono">{infoDoc.sent_to_dept_at ? formatIST(infoDoc.sent_to_dept_at) : '-'}</span></div><div className="flex justify-between pl-4 border-l-2 border-yellow-200"><span className="text-slate-600">↳ Faculty Assigned:</span><span className="font-mono text-xs">{infoDoc.assigned_to_faculty_at ? formatIST(infoDoc.assigned_to_faculty_at) : '-'}</span></div><div className="flex justify-between pl-4 border-l-2 border-purple-200"><span className="text-slate-600">↳ Faculty Reported:</span><span className="font-mono text-xs">{infoDoc.faculty_processed_at ? formatIST(infoDoc.faculty_processed_at) : '-'}</span></div><div className="flex justify-between"><span className="text-slate-600">Dept Approved:</span><span className="font-mono">{infoDoc.dept_processed_at ? formatIST(infoDoc.dept_processed_at) : '-'}</span></div><div className="flex justify-between border-t pt-2 mt-2"><span className="text-slate-800 font-bold">Completed:</span><span className="font-mono font-bold text-green-600">{infoDoc.final_report_sent_at ? formatIST(infoDoc.final_report_sent_at) : '-'}</span></div></div>
                       
-                      {/* 🔥 SPLIT PAYMENT REMINDERS 🔥 */}
-                      {infoDoc.fee_total > 0 && (<div className="bg-blue-50/50 p-3 rounded-lg border border-blue-100"><span className="text-xs font-bold text-blue-800 uppercase block mb-2">Financial Lifecycle (₹{infoDoc.fee_total})</span>{infoDoc.installments.map((inst, idx) => (
-                          <div key={inst._id} className="flex justify-between text-xs mt-1 border-b border-blue-100 pb-1">
-                              <span className="text-slate-600">↳ {idx===0?"Advance":"Balance"} (₹{inst.amount}):</span>
-                              <div className="flex items-center gap-2">
-                                  <span className={inst.status==='Paid'?"text-green-600 font-bold":"text-red-500 font-bold"}>{inst.status}</span>
-                                  {inst.status === 'Pending' && <button onClick={() => handleSendReminder(infoDoc._id, inst._id)} className="bg-orange-100 text-orange-600 px-2 py-0.5 rounded border border-orange-200 text-[10px] font-bold hover:bg-orange-200">🔔 Notify</button>}
-                              </div>
+                      {infoDoc.fee_total > 0 && (
+                          <div className="bg-blue-50/50 p-3 rounded-lg border border-blue-100">
+                              <span className="text-xs font-bold text-blue-800 uppercase block mb-2">Financial Lifecycle (₹{infoDoc.fee_total})</span>
+                              {infoDoc.installments.map((inst, idx) => (
+                                  <div key={inst._id} className="flex justify-between items-center text-xs mt-1 border-b border-blue-100 pb-1">
+                                      <span className="text-slate-600">↳ {idx===0 ? "Advance" : "Balance"} (₹{inst.amount}):</span>
+                                      <div className="flex items-center gap-2">
+                                          <span className={inst.status==='Paid'?"text-green-600 font-bold":"text-red-500 font-bold"}>{inst.status === 'Paid' ? 'Paid' : inst.amount === 0 ? 'N/A' : 'Pending'}</span>
+                                          {inst.status === 'Pending' && inst.amount > 0 && <button onClick={() => handleSendReminder(infoDoc._id, inst._id)} className="bg-orange-100 text-orange-600 px-2 py-0.5 rounded border border-orange-200 text-[10px] font-bold hover:bg-orange-200">🔔 Notify</button>}
+                                      </div>
+                                  </div>
+                              ))}
                           </div>
-                      ))}</div>)}
+                      )}
                       
-                      {infoDoc.dept_report && (<div className="mt-4 flex gap-2"><a href={getFileUrl(infoDoc.dept_report)} target="_blank" rel="noopener noreferrer" className="flex-1 block text-center bg-purple-600 text-white py-2 rounded font-bold hover:bg-purple-700">View Report</a><button onClick={() => handleForceDownload(getFileUrl(infoDoc.dept_report), `${infoDoc.tracking_id}_final`)} className="flex-1 block text-center bg-green-600 text-white py-2 rounded font-bold hover:bg-green-700">Download Report</button></div>)}
+                      {infoDoc.dept_report && (<div className="mt-4 flex gap-2"><a href={getFileUrl(infoDoc.dept_report)} target="_blank" rel="noopener noreferrer" className="flex-1 block text-center bg-purple-600 text-white py-2 rounded font-bold hover:bg-purple-700">View Report</a><button onClick={() => handleForceDownload(getFileUrl(infoDoc.dept_report), `${infoDoc.tracking_id}_report`)} className="flex-1 block text-center bg-green-600 text-white py-2 rounded font-bold hover:bg-green-700">Download Report</button></div>)}
                       {infoDoc.status === 'Dept_Reported' && (<button onClick={() => handleForwardToClient(infoDoc._id)} className="w-full bg-green-600 text-white py-3 rounded-lg font-bold shadow hover:bg-green-700 mt-2">Forward Final Report to Client</button>)}
                       <button onClick={() => setInfoDoc(null)} className="w-full bg-slate-100 py-2 rounded-lg font-bold hover:bg-slate-200 mt-2">Close</button>
                   </div>
