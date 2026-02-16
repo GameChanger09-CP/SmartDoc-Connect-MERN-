@@ -36,7 +36,7 @@ export default function PublicPayment() {
     }, [docId, installmentId]);
 
     const handlePay = async () => {
-        // 🔥 FIX: Load script before checking window.Razorpay
+        // 🔥 CRITICAL FIX: Ensure script loads before using it
         const isLoaded = await loadRazorpay();
         if (!isLoaded) return alert("Failed to load Payment Gateway. Check internet connection.");
 

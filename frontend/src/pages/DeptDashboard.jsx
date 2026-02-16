@@ -19,11 +19,7 @@ export default function DeptDashboard() {
 
   const fetchData = async () => {
     try {
-        const [docRes, facRes] = await Promise.all([
-            api.get('/api/documents/'),
-            // 🔥 FIX: Corrected path to match backend structure
-            api.get('/api/users/faculty') 
-        ]);
+        const [docRes, facRes] = await Promise.all([api.get('/api/documents/'), api.get('/api/users/faculty')]);
         setDocs(Array.isArray(docRes.data) ? docRes.data : docRes.data.results || []);
         setFaculty(facRes.data || []);
     } catch (error) { console.error("Fetch error", error); }
@@ -50,6 +46,18 @@ export default function DeptDashboard() {
   const handleAddInstallment = () => setInstallments([...installments, { amount: '' }]);
   const handleRemoveInstallment = (index) => setInstallments(installments.filter((_, i) => i !== index));
   const handleInstallmentChange = (index, value) => { const newInst = [...installments]; newInst[index].amount = value; setInstallments(newInst); };
+  
+  // 🔥 SEND REMINDER 🔥
+  const handleSendReminder = async (docId, installmentId) => {
+      if(!window.confirm("Send payment reminder email to user?")) return;
+      try {
+          await api.post(`/api/documents/${docId}/remind_payment/${installmentId}`);
+          alert("Reminder Sent Successfully! 📧");
+          setInfoDoc(null); 
+          fetchData();
+      } catch(e) { alert("Failed to send reminder."); }
+  };
+
   const getFileUrl = (path) => path ? `http://127.0.0.1:8000/${path.replace(/\\/g, '/')}` : '#';
 
   const handleForceDownload = (url, baseFilename) => {
@@ -70,6 +78,7 @@ export default function DeptDashboard() {
       <Navbar />
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         
+        {/* ... (Stats & Layout) ... */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
             <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 flex justify-between hover:shadow-md transition"><div><p className="text-slate-500 text-xs font-bold uppercase tracking-wider">Pending</p><h3 className="text-3xl font-extrabold text-blue-600">{docs.filter(d => d.status === 'In_Progress').length}</h3></div><div className="text-2xl bg-blue-50 p-3 rounded-xl">📄</div></div>
             <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 flex justify-between hover:shadow-md transition"><div><p className="text-slate-500 text-xs font-bold uppercase tracking-wider">Staff</p><h3 className="text-3xl font-extrabold text-orange-600">{faculty.length}</h3></div><div className="text-2xl bg-orange-50 p-3 rounded-xl">👨‍🏫</div></div>
@@ -78,10 +87,7 @@ export default function DeptDashboard() {
 
         <div className="grid grid-cols-1 lg:grid-cols-4 gap-8">
             <div className="lg:col-span-1 space-y-6">
-                <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100">
-                    <h3 className="font-bold text-slate-800 mb-4 border-b pb-2">Add Faculty</h3>
-                    <form onSubmit={handleCreateFaculty} className="space-y-3"><input className="w-full border p-2.5 rounded-lg text-sm bg-slate-50" placeholder="Username" value={newFaculty.username} onChange={e => setNewFaculty({...newFaculty, username: e.target.value})} required /><input className="w-full border p-2.5 rounded-lg text-sm bg-slate-50" placeholder="Email" type="email" value={newFaculty.email} onChange={e => setNewFaculty({...newFaculty, email: e.target.value})} required /><input className="w-full border p-2.5 rounded-lg text-sm bg-slate-50" placeholder="Password" type="password" value={newFaculty.password} onChange={e => setNewFaculty({...newFaculty, password: e.target.value})} required /><button className="w-full bg-orange-600 hover:bg-orange-700 text-white py-2.5 rounded-lg font-bold text-sm transition">Create</button></form>
-                </div>
+                <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100"><h3 className="font-bold text-slate-800 mb-4 border-b pb-2">Add Faculty</h3><form onSubmit={handleCreateFaculty} className="space-y-3"><input className="w-full border p-2.5 rounded-lg text-sm bg-slate-50" placeholder="Username" value={newFaculty.username} onChange={e => setNewFaculty({...newFaculty, username: e.target.value})} required /><input className="w-full border p-2.5 rounded-lg text-sm bg-slate-50" placeholder="Email" type="email" value={newFaculty.email} onChange={e => setNewFaculty({...newFaculty, email: e.target.value})} required /><input className="w-full border p-2.5 rounded-lg text-sm bg-slate-50" placeholder="Password" type="password" value={newFaculty.password} onChange={e => setNewFaculty({...newFaculty, password: e.target.value})} required /><button className="w-full bg-orange-600 hover:bg-orange-700 text-white py-2.5 rounded-lg font-bold text-sm transition">Create</button></form></div>
                 <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100"><h3 className="font-bold text-slate-800 mb-4 border-b pb-2">Your Team</h3><div className="space-y-2 max-h-60 overflow-y-auto custom-scrollbar">{faculty.map(fac => (<div key={fac._id} className="p-2 bg-slate-50 border rounded-lg text-xs font-bold text-slate-700 flex justify-between"><span className="flex items-center gap-2"><span className="w-2 h-2 bg-green-500 rounded-full"></span> {fac.username}</span></div>))}</div></div>
             </div>
 
@@ -165,7 +171,7 @@ export default function DeptDashboard() {
         </div>
       )}
 
-      {/* Info Modal */}
+      {/* Info Modal with Reminders */}
       {infoDoc && (
           <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 backdrop-blur-sm p-4">
               <div className="bg-white p-6 rounded-xl w-[500px] shadow-2xl animate-scale-in">
@@ -182,16 +188,19 @@ export default function DeptDashboard() {
                           <div className="flex justify-between"><span className="text-slate-600">Dept Approved:</span><span className="font-mono">{infoDoc.dept_processed_at ? formatIST(infoDoc.dept_processed_at) : '-'}</span></div>
                           <div className="flex justify-between border-t pt-2 mt-2"><span className="text-slate-800 font-bold">Completed:</span><span className="font-mono font-bold text-green-600">{infoDoc.final_report_sent_at ? formatIST(infoDoc.final_report_sent_at) : '-'}</span></div>
                       </div>
-                      {infoDoc.fee_total > 0 && (<div className="bg-blue-50/50 p-3 rounded-lg border border-blue-100"><span className="text-xs font-bold text-blue-800 uppercase block mb-2">Financial Lifecycle (₹{infoDoc.fee_total})</span>{infoDoc.installments.map((inst, idx) => (<div key={inst._id} className="flex justify-between text-xs mt-1 border-b border-blue-100 pb-1"><span className="text-slate-600">↳ Part {idx + 1} (₹{inst.amount}):</span><span className={inst.status==='Paid'?"text-green-600 font-bold":"text-red-500 font-bold"}>{inst.status}</span></div>))}</div>)}
                       
-                      {/* 🔥 DOWNLOAD BUTTONS 🔥 */}
-                      {infoDoc.dept_report && (
-                          <div className="mt-4 flex gap-2">
-                              <a href={getFileUrl(infoDoc.dept_report)} target="_blank" rel="noopener noreferrer" className="flex-1 block text-center bg-purple-600 text-white py-2 rounded font-bold hover:bg-purple-700">View Report</a>
-                              <button onClick={() => handleForceDownload(getFileUrl(infoDoc.dept_report), `${infoDoc.tracking_id}_report`)} className="flex-1 block text-center bg-green-600 text-white py-2 rounded font-bold hover:bg-green-700">Download Report</button>
+                      {/* 🔥 SPLIT PAYMENT REMINDERS 🔥 */}
+                      {infoDoc.fee_total > 0 && (<div className="bg-blue-50/50 p-3 rounded-lg border border-blue-100"><span className="text-xs font-bold text-blue-800 uppercase block mb-2">Financial Lifecycle (₹{infoDoc.fee_total})</span>{infoDoc.installments.map((inst, idx) => (
+                          <div key={inst._id} className="flex justify-between text-xs mt-1 border-b border-blue-100 pb-1">
+                              <span className="text-slate-600">↳ {idx===0?"Advance":"Balance"} (₹{inst.amount}):</span>
+                              <div className="flex items-center gap-2">
+                                  <span className={inst.status==='Paid'?"text-green-600 font-bold":"text-red-500 font-bold"}>{inst.status}</span>
+                                  {inst.status === 'Pending' && <button onClick={() => handleSendReminder(infoDoc._id, inst._id)} className="bg-orange-100 text-orange-600 px-2 py-0.5 rounded border border-orange-200 text-[10px] font-bold hover:bg-orange-200">🔔 Notify</button>}
+                              </div>
                           </div>
-                      )}
+                      ))}</div>)}
                       
+                      {infoDoc.dept_report && (<div className="mt-4 flex gap-2"><a href={getFileUrl(infoDoc.dept_report)} target="_blank" rel="noopener noreferrer" className="flex-1 block text-center bg-purple-600 text-white py-2 rounded font-bold hover:bg-purple-700">View Report</a><button onClick={() => handleForceDownload(getFileUrl(infoDoc.dept_report), `${infoDoc.tracking_id}_report`)} className="flex-1 block text-center bg-green-600 text-white py-2 rounded font-bold hover:bg-green-700">Download Report</button></div>)}
                       <button onClick={() => setInfoDoc(null)} className="w-full bg-slate-100 py-2 rounded-lg font-bold hover:bg-slate-200 mt-2">Close</button>
                   </div>
               </div>

@@ -1,22 +1,21 @@
 const express = require('express');
 const router = express.Router();
 
-// 🔥 REQUIRED IMPORT (Missing previously)
+// 🔥 REQUIRED IMPORT
 const userController = require('../controllers/userController');
 const auth = require('../middlewares/auth');
 
-// Route Map: Prefix is /api/users
+// Prefix is /api/users
 
-// Statistics & Logs
 router.get('/stats', auth, userController.getDashboardStats);
 router.get('/logs', auth, userController.getLogs);
 
 // User Management
-router.get('/', auth, userController.getPendingUsers);  // For Admin Provisioning
-router.post('/', auth, userController.createUser);      // For Admin Provisioning
-router.get('/search', auth, userController.searchUsers); // For Offline Upload
+router.get('/', auth, userController.getPendingUsers);  // List Pending
+router.post('/', auth, userController.createUser);      // Create New
+router.get('/search', auth, userController.searchUsers); // Search
 
-// User Actions
+// Approvals
 router.post('/:id/approve', auth, userController.approveUser);
 router.post('/:id/reject', auth, userController.rejectUser);
 
