@@ -9,27 +9,33 @@ exports.login = async (req, res) => {
     const { username, password } = req.body;
     const user = await User.findOne({ username });
     
+    // 1. Check User Existence & Password
     if (!user || !(await bcrypt.compare(password, user.password))) {
         return res.status(400).json({ error: 'Invalid Credentials' });
     }
     
-    // Only Clients or Verified internal staff can login. Main_Admin always can.
-    if (user.role !== 'Main_Admin' && user.role !== 'Client' && user.kyc_status !== 'Verified') {
-        return res.status(403).json({ error: 'Account Pending Approval by System Administrator.' });
+    // 2. 🔥 STRICT KYC CHECK 🔥
+    // Previously, Clients were skipped. Now, EVERYONE (except Main_Admin) must be 'Verified'.
+    if (user.role !== 'Main_Admin' && user.kyc_status !== 'Verified') {
+        return res.status(403).json({ error: 'Access Denied: Your account is pending Admin Approval.' });
     }
     
+    // 3. Generate Token
     const token = jwt.sign({ id: user._id }, process.env.JWT_SECRET, { expiresIn: '7d' });
     await ActivityLog.create({ user: user._id, action: 'Login', details: 'Logged in successfully' });
     
     res.json({ token, role: user.role, username: user.username });
 };
 
-// --- REGISTER (WITH EMAIL CREDENTIALS) ---
+// --- REGISTER (Public Sign Up) ---
 exports.register = async (req, res) => {
     const { username, email, password, role } = req.body;
 
+    // Security: Only allow Client registration publicly (unless logic changes)
+    // Admin creation is handled in userController.createUser
+    
     const hashedPassword = await bcrypt.hash(password, 10);
-    const kyc_status = 'Pending'; 
+    const kyc_status = 'Pending'; // Always Pending for new signups
     const gov_id = req.file ? req.file.path : null;
 
     try {
@@ -42,24 +48,22 @@ exports.register = async (req, res) => {
             gov_id 
         });
 
-        // 🔥 SEND CREDENTIALS EMAIL 🔥
+        // 🔥 EMAIL NOTIFICATION: PENDING APPROVAL 🔥
         const emailContent = `
             <div style="font-family: Arial, sans-serif; padding: 20px; color: #333;">
-                <h2 style="color: #1e3a8a;">Welcome to SmartDoc Connect</h2>
-                <p>Your account has been successfully created.</p>
-                <div style="background: #f3f4f6; padding: 15px; border-radius: 8px; margin: 20px 0;">
-                    <p style="margin: 5px 0;"><strong>Username:</strong> ${username}</p>
-                    <p style="margin: 5px 0;"><strong>Password:</strong> ${password}</p>
-                    <p style="margin: 5px 0;"><strong>Role:</strong> ${role || 'Client'}</p>
+                <h2 style="color: #1e3a8a;">Registration Successful</h2>
+                <p>Hello <b>${username}</b>,</p>
+                <p>Your account has been created and is currently <b>PENDING APPROVAL</b>.</p>
+                <p>The Main Administrator will review your uploaded ID. Once approved, you will be able to log in.</p>
+                <div style="background: #fff3cd; padding: 10px; border-left: 4px solid #ffc107; margin: 20px 0;">
+                    <strong>Status:</strong> Waiting for Admin Verification
                 </div>
-                <p>Please log in and change your password immediately for security.</p>
-                <a href="http://localhost:5173/login" style="background: #2563eb; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px;">Login Now</a>
             </div>
         `;
         
-        await sendMail(email, "Your Account Credentials", emailContent);
+        await sendMail(email, "Account Pending Approval - SmartDoc", emailContent);
 
-        res.status(201).json({ status: 'Registered successfully', userId: user._id });
+        res.status(201).json({ status: 'Registered successfully. Wait for approval.', userId: user._id });
     } catch (e) { 
         if (e.code === 11000) return res.status(400).json({ error: 'Username already exists.' });
         console.error("Register Error:", e);

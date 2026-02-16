@@ -2,6 +2,17 @@ import React, { useState, useEffect } from 'react';
 import { useParams } from 'react-router-dom';
 import api from '../api';
 
+// Helper to load Razorpay Script dynamically
+const loadRazorpay = () => {
+    return new Promise((resolve) => {
+        const script = document.createElement('script');
+        script.src = 'https://checkout.razorpay.com/v1/checkout.js';
+        script.onload = () => resolve(true);
+        script.onerror = () => resolve(false);
+        document.body.appendChild(script);
+    });
+};
+
 export default function PublicPayment() {
     const { docId, installmentId } = useParams();
     const [data, setData] = useState(null);
@@ -24,8 +35,10 @@ export default function PublicPayment() {
         fetchInfo();
     }, [docId, installmentId]);
 
-    const handlePay = () => {
-        if (!window.Razorpay) return alert("Payment Gateway Error");
+    const handlePay = async () => {
+        // 🔥 FIX: Load script before checking window.Razorpay
+        const isLoaded = await loadRazorpay();
+        if (!isLoaded) return alert("Failed to load Payment Gateway. Check internet connection.");
 
         const options = {
             key: data.key,
@@ -44,41 +57,65 @@ export default function PublicPayment() {
                         razorpay_signature: response.razorpay_signature
                     });
                     setSuccess(true);
-                } catch (err) { alert("Verification Failed"); }
+                } catch (err) { alert("Verification Failed. Please contact admin."); }
             },
             theme: { color: "#2563EB" }
         };
+        
         const rzp = new window.Razorpay(options);
         rzp.open();
     };
 
-    if (loading) return <div className="min-h-screen flex items-center justify-center">Loading...</div>;
-    if (success) return <div className="min-h-screen flex items-center justify-center bg-green-50"><div className="text-center"><h1 className="text-4xl">✅</h1><h2 className="text-2xl font-bold text-green-700 mt-4">Payment Successful!</h2><p className="text-gray-600 mt-2">You can close this window.</p></div></div>;
-    if (error) return <div className="min-h-screen flex items-center justify-center bg-red-50"><div className="text-center"><h2 className="text-2xl font-bold text-red-700">Error</h2><p className="text-red-600 mt-2">{error}</p></div></div>;
+    if (loading) return <div className="min-h-screen flex items-center justify-center font-sans text-slate-500">Loading Payment Details...</div>;
+    
+    if (success) return (
+        <div className="min-h-screen flex items-center justify-center bg-green-50 font-sans">
+            <div className="text-center p-8 bg-white rounded-2xl shadow-xl">
+                <h1 className="text-5xl mb-4">✅</h1>
+                <h2 className="text-2xl font-bold text-green-700">Payment Successful!</h2>
+                <p className="text-gray-500 mt-2">The document status has been updated.</p>
+                <p className="text-xs text-gray-400 mt-4">You can safely close this window.</p>
+            </div>
+        </div>
+    );
+
+    if (error) return (
+        <div className="min-h-screen flex items-center justify-center bg-red-50 font-sans">
+            <div className="text-center p-8 bg-white rounded-2xl shadow-xl">
+                <h1 className="text-5xl mb-4">⚠️</h1>
+                <h2 className="text-2xl font-bold text-red-700">Payment Link Invalid</h2>
+                <p className="text-red-500 mt-2">{error}</p>
+            </div>
+        </div>
+    );
 
     return (
-        <div className="min-h-screen flex items-center justify-center bg-slate-50 p-4">
-            <div className="bg-white p-8 rounded-2xl shadow-xl w-full max-w-md text-center border border-slate-200">
-                <div className="mb-6">
-                    <div className="w-16 h-16 bg-blue-100 text-blue-600 rounded-full flex items-center justify-center text-3xl mx-auto mb-4">💳</div>
+        <div className="min-h-screen flex items-center justify-center bg-slate-100 p-4 font-sans">
+            <div className="bg-white p-8 rounded-2xl shadow-2xl w-full max-w-md text-center border border-white/50">
+                <div className="mb-8">
+                    <div className="w-20 h-20 bg-blue-50 text-blue-600 rounded-full flex items-center justify-center text-4xl mx-auto mb-4 shadow-sm">💳</div>
                     <h1 className="text-2xl font-extrabold text-slate-900">Secure Payment</h1>
                     <p className="text-slate-500 text-sm mt-1">SmartDoc Connect</p>
                 </div>
 
-                <div className="bg-slate-50 p-4 rounded-xl border border-slate-100 mb-8 text-left">
-                    <div className="flex justify-between mb-2">
-                        <span className="text-gray-500 text-sm">Document ID</span>
-                        <span className="font-mono font-bold text-slate-800">{data.tracking_id}</span>
+                <div className="bg-slate-50 p-6 rounded-xl border border-slate-200 mb-8 text-left space-y-4">
+                    <div className="flex justify-between items-center">
+                        <span className="text-gray-500 text-xs uppercase font-bold tracking-wider">Document ID</span>
+                        <span className="font-mono font-bold text-slate-800 bg-white px-2 py-1 rounded border">{data.tracking_id}</span>
                     </div>
-                    <div className="flex justify-between border-t pt-2">
-                        <span className="text-gray-500 text-sm">Amount Due</span>
-                        <span className="font-bold text-xl text-blue-600">₹{data.amount}</span>
+                    <div className="flex justify-between items-center border-t border-slate-200 pt-4">
+                        <span className="text-gray-500 text-xs uppercase font-bold tracking-wider">Amount Due</span>
+                        <span className="font-extrabold text-3xl text-blue-600">₹{data.amount}</span>
                     </div>
                 </div>
 
-                <button onClick={handlePay} className="w-full bg-blue-600 hover:bg-blue-700 text-white py-4 rounded-xl font-bold text-lg shadow-lg transition transform hover:-translate-y-1">
-                    Pay Now
+                <button onClick={handlePay} className="w-full bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white py-4 rounded-xl font-bold text-lg shadow-lg shadow-blue-500/30 transition transform hover:-translate-y-1 active:scale-95">
+                    Pay Now securely
                 </button>
+                
+                <div className="mt-6 flex items-center justify-center gap-2 text-xs text-gray-400">
+                    <span>🔒 Secured by Razorpay</span>
+                </div>
             </div>
         </div>
     );

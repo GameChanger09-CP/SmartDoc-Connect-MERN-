@@ -33,20 +33,23 @@ exports.createUser = async (req, res) => {
         const { username, email, password, role } = req.body;
         const hashedPassword = await bcrypt.hash(password, 10);
         
+        // Admin-created users are auto-verified
         const newUser = await User.create({
             username, email, password: hashedPassword, role, kyc_status: 'Verified' 
         });
 
-        // Send Email with Credentials
+        // Send Email with Credentials (Only possible here because Admin just typed it)
         const emailContent = `
             <h3>Welcome to SmartDoc Connect</h3>
             <p>Your account has been created by the Administrator.</p>
-            <p><b>Username:</b> ${username}</p>
-            <p><b>Password:</b> ${password}</p>
-            <p><b>Role:</b> ${role}</p>
-            <p>Please login and change your password.</p>
+            <div style="background: #f3f4f6; padding: 15px; border-radius: 8px;">
+                <p><b>Username:</b> ${username}</p>
+                <p><b>Password:</b> ${password}</p>
+                <p><b>Role:</b> ${role}</p>
+            </div>
+            <p>Please login and change your password immediately.</p>
         `;
-        sendMail(email, "Account Created", emailContent);
+        await sendMail(email, "Account Created - Credentials", emailContent);
 
         res.json({ status: "Created" });
     } catch (e) {
@@ -55,18 +58,48 @@ exports.createUser = async (req, res) => {
     }
 };
 
-// --- APPROVE USER ---
+// --- APPROVE USER (Main Admin Actions) ---
 exports.approveUser = async (req, res) => {
     try {
-        await User.findByIdAndUpdate(req.params.id, { kyc_status: 'Verified' });
+        const user = await User.findByIdAndUpdate(req.params.id, { kyc_status: 'Verified' }, { new: true });
+        
+        if (!user) return res.status(404).json({ error: "User not found" });
+
+        // 🔥 SEND APPROVAL EMAIL 🔥
+        const emailContent = `
+            <div style="font-family: Arial, sans-serif; padding: 20px;">
+                <h2 style="color: #166534;">Account Approved</h2>
+                <p>Hello <b>${user.username}</b>,</p>
+                <p>Your identity has been verified by the Main Administrator.</p>
+                <p>You can now log in to your dashboard to submit documents and view status.</p>
+                <a href="http://localhost:5173/login" style="background: #166534; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px;">Login Now</a>
+            </div>
+        `;
+        await sendMail(user.email, "Access Granted - SmartDoc Connect", emailContent);
+
         res.json({ status: 'Approved' });
     } catch (e) { res.status(500).json({ error: "Approve failed" }); }
 };
 
-// --- REJECT USER (Delete) ---
+// --- REJECT USER (Main Admin Actions) ---
 exports.rejectUser = async (req, res) => {
     try {
-        await User.findByIdAndDelete(req.params.id);
+        const user = await User.findById(req.params.id);
+        if (user) {
+            // Send Rejection Email before deletion
+            const emailContent = `
+                <div style="font-family: Arial, sans-serif; padding: 20px;">
+                    <h2 style="color: #dc2626;">Account Rejected</h2>
+                    <p>Hello <b>${user.username}</b>,</p>
+                    <p>Your account application has been rejected by the Administrator.</p>
+                    <p>This is likely due to an invalid or unclear Government ID.</p>
+                    <p>Please register again with valid documents.</p>
+                </div>
+            `;
+            await sendMail(user.email, "Application Rejected", emailContent);
+            
+            await User.findByIdAndDelete(req.params.id);
+        }
         res.json({ status: 'Rejected' });
     } catch (e) { res.status(500).json({ error: "Reject failed" }); }
 };
@@ -95,7 +128,7 @@ exports.getLogs = async (req, res) => {
     } catch (e) { res.status(500).json({ error: "Fetch failed" }); }
 };
 
-// 🔥 SEARCH USERS (For Offline Upload) 🔥
+// --- SEARCH USERS (For Offline Upload) ---
 exports.searchUsers = async (req, res) => {
     try {
         const { q } = req.query;
