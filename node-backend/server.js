@@ -37,10 +37,19 @@ app.use('/api/documents', docRoutes);
 app.use('/api/users', userRoutes);
 
 // --- BASE ROUTE (Health Check) ---
-app.get('/', (req, res) => {
-    res.send("SmartDoc Connect API is Running...");
-});
+// app.get('/', (req, res) => {
+//     res.send("SmartDoc Connect API is Running...");
+// });
 
+const frontendDistPath = path.join(__dirname, '../frontend/dist');
+console.log("hello",frontendDistPath)
+
+app.use(express.static(frontendDistPath));
+
+
+app.get(/.*/, (req, res) => {
+  res.sendFile(path.join(frontendDistPath, 'index.html'));
+}); 
 // --- ERROR HANDLING MIDDLEWARE ---
 app.use((err, req, res, next) => {
     console.error(err.stack);
@@ -52,3 +61,54 @@ const PORT = process.env.PORT || 8000;
 app.listen(PORT, () => {
     console.log(`🚀 Server running on port ${PORT}`);
 });
+
+
+
+
+
+
+
+// const express = require('express');
+// const cors = require('cors');
+// const mongoose = require('mongoose');
+// const path = require('path');
+// require('dotenv').config();
+
+// const authRoutes = require('./routes/authRoutes');
+// const docRoutes = require('./routes/docRoutes');
+// const userRoutes = require('./routes/userRoutes');
+
+// const app = express();
+
+// // Middleware
+// app.use(cors());
+// app.use(express.json());
+// app.use(express.urlencoded({ extended: true }));
+
+// // Connect to MongoDB (Deprecated options removed)
+// mongoose.connect(process.env.MONGO_URI)
+// .then(() => console.log('MongoDB Connected'))
+// .catch(err => console.error('MongoDB Connection Error:', err));
+
+// // Define your API routes
+// app.use('/api/auth', authRoutes);
+// app.use('/api/docs', docRoutes);
+// app.use('/api/users', userRoutes);
+
+// // --- ADDED FOR SERVING FRONTEND ---
+// // 1. Serve the static files from the React app
+// const frontendDistPath = path.join(__dirname, '../frontend/dist');
+// app.use(express.static(frontendDistPath));
+
+// // 2. Catch-all handler for React Router
+// // Using Regex /.*/ instead of '*' to fix the path-to-regexp error
+// app.get(/.*/, (req, res) => {
+//     res.sendFile(path.join(frontendDistPath, 'index.html'));
+// });
+// // ----------------------------------
+
+// // Start the server
+// const PORT = process.env.PORT || 5000;
+// app.listen(PORT, () => {
+//     console.log(`Server running on port ${PORT}`);
+// });
