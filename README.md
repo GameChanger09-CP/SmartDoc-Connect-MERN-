@@ -40,7 +40,7 @@ Create a .env file inside the node-backend/ folder and paste the following confi
 
 Code snippet
 # Server Config
-PORT=8000
+PORT=8001
 MONGODB_URI=mongodb://127.0.0.1:27017/smartdoc_db
 JWT_SECRET=my_super_secret_secure_key_123
 
@@ -64,7 +64,7 @@ Password: admin123
 Start the Server
 Bash
 node server.js
-✅ You should see: 🚀 Node API running on http://127.0.0.1:8000
+✅ You should see: 🚀 Node API running on http://127.0.0.1:8001
 
 ⚛️ 3. Frontend Setup (React)
 Open a new terminal window (keep the backend running) and navigate to the frontend folder.
