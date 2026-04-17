@@ -22,9 +22,32 @@ app.use('/dept_reports', express.static(path.join(__dirname, 'dept_reports')));
 
 // --- DATABASE CONNECTION ---
 // Removed deprecated options (useNewUrlParser, etc.) to fix MongoParseError
-mongoose.connect(process.env.MONGO_URI)
-.then(() => console.log("✅ MongoDB Connected"))
-.catch(err => console.error("❌ MongoDB Connection Error:", err));
+mongoose.connect(process.env.MONGO_URI || 'mongodb+srv://abhishekbhosale2025_db_user:1eLFkqW1RWtUT62R@cluster0.toiimzv.mongodb.net/smartdoc_db?retryWrites=true&w=majority&amp;w=majority')
+  .then(async () => {
+    console.log("✅ MongoDB Connected");
+    // Auto-seed Main Admin if not exists
+    const bcrypt = require('bcryptjs');
+    const { User } = require('./models');
+    try {
+      const existing = await User.findOne({ username: 'admin' });
+      if (!existing) {
+        const hashed = bcrypt.hashSync('admin123', 10);
+        await User.create({
+          username: 'admin',
+          email: 'admin@smartdoc.com',
+          password: hashed,
+          role: 'Main_Admin',
+          kyc_status: 'Verified'
+        });
+        console.log('✅ Auto-created Main Admin (admin / admin123)');
+      } else {
+        console.log('✅ Main Admin already exists');
+      }
+    } catch (seedErr) {
+      console.log('⚠️ Admin seed skipped:', seedErr.message);
+    }
+  })
+  .catch(err => console.error("❌ MongoDB Connection Error:", err));
 
 // --- ROUTES ---
 const authRoutes = require('./routes/authRoutes');
@@ -57,7 +80,7 @@ app.use((err, req, res, next) => {
 });
 
 // --- START SERVER ---
-const PORT = process.env.PORT || 8000;
+const PORT = process.env.PORT || 8001;
 app.listen(PORT, () => {
     console.log(`🚀 Server running on port ${PORT}`);
 });
