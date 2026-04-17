@@ -1,7 +1,7 @@
 import axios from 'axios';
 
 const api = axios.create({
-    baseURL: 'https://smartdoc-4mx3.onrender.com',
+    baseURL: 'http://127.0.0.1:8001' || 'https://smartdoc-4mx3.onrender.com',
 });
 
 api.interceptors.request.use((config) => {

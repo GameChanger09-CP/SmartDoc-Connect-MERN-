@@ -55,7 +55,7 @@ export default function DeptDashboard() {
       } catch(e) { alert("Failed to send reminder."); }
   };
 
-  const getFileUrl = (path) => path ? `https://smartdoc-4mx3.onrender.com/${path.replace(/\\/g, '/')}` : '#';
+  const getFileUrl = (path) => path ? `http://127.0.0.1:8001/${path.replace(/\\/g, '/')}` : '#';
 
   const handleForceDownload = (url, baseFilename) => {
       const extension = url.split('.').pop().split(/\#|\?/)[0];

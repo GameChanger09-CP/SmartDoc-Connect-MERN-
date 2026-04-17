@@ -43,7 +43,7 @@ export default function FacultyDashboard() {
       try { await api.post(`/api/documents/${id}/return`, { note }); alert("Returned."); fetchDocs(); } catch(e) { alert("Failed."); }
   };
 
-  const getFileUrl = (path) => path ? `https://smartdoc-4mx3.onrender.com/${path.replace(/\\/g, '/')}` : '#';
+  const getFileUrl = (path) => path ? `http://127.0.0.1:8001/${path.replace(/\\/g, '/')}` : '#';
 
   // 🔥 FORCE DOWNLOAD 🔥
   const handleForceDownload = (url, baseFilename) => {
