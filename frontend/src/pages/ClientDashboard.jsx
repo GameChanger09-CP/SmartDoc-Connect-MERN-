@@ -5,7 +5,7 @@ import { formatIST, getFileUrl, forceDownload, loadRazorpay, DOC_STATUS } from '
 
 export default function ClientDashboard() {
   const [file, setFile] = useState(null);
-  const [previewUrl, setPreviewUrl] = useState(null); // Added for document preview
+  const [previewUrl, setPreviewUrl] = useState(null); 
   const [docs, setDocs] = useState([]);
   const [filterStatus, setFilterStatus] = useState("All"); 
   const [infoDoc, setInfoDoc] = useState(null); 
@@ -44,7 +44,6 @@ export default function ClientDashboard() {
       return true;
   });
 
-  // --- NEW: Handle File Selection for Preview ---
   const handleFileSelect = (e) => {
       const selectedFile = e.target.files[0];
       if (selectedFile) {
@@ -53,14 +52,12 @@ export default function ClientDashboard() {
       }
   };
 
-  // --- NEW: Cancel Upload & Clear Preview ---
   const cancelUpload = () => {
       setFile(null);
       setPreviewUrl(null);
       document.getElementById('client-file-upload').value = '';
   };
 
-  // --- MODIFIED: Confirm and Upload ---
   const confirmUpload = async () => {
     if(!file) return alert("Please select a file to upload.");
     setIsUploading(true);
@@ -68,7 +65,7 @@ export default function ClientDashboard() {
     try { 
         await api.post('/api/documents/', formData); 
         fetchDocs(); 
-        cancelUpload(); // Reset state after success
+        cancelUpload(); 
         alert('Document uploaded successfully!'); 
     } 
     catch (error) { alert(error.response?.data?.error || "Upload Failed."); }
@@ -135,7 +132,6 @@ export default function ClientDashboard() {
                     <div className={`absolute top-0 left-0 w-1 h-full ${doc.status === DOC_STATUS.COMPLETED ? 'bg-green-500' : 'bg-blue-500'}`}></div>
                     
                     <div className="flex justify-between items-start mb-4">
-                        {/* MODIFIED: Clickable Tracking ID */}
                         <a href={getFileUrl(doc.file)} target="_blank" rel="noopener noreferrer" className="font-mono text-xs font-bold text-blue-600 hover:underline uppercase">
                             {doc.tracking_id}
                         </a>
@@ -183,7 +179,6 @@ export default function ClientDashboard() {
         </div>
       </div>
 
-      {/* --- NEW: Document Preview Modal --- */}
       {previewUrl && (
           <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 backdrop-blur-sm p-4">
               <div className="bg-white p-6 rounded-xl w-full max-w-4xl h-[90vh] flex flex-col shadow-2xl animate-scale-in">

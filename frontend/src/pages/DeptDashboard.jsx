@@ -9,8 +9,12 @@ export default function DeptDashboard() {
   const [filterStatus, setFilterStatus] = useState("All"); 
   const [infoDoc, setInfoDoc] = useState(null);
   const [paymentDoc, setPaymentDoc] = useState(null); 
+  const [assignDoc, setAssignDoc] = useState(null); 
+  const [selectedFaculties, setSelectedFaculties] = useState([]); 
+  
   const [installments, setInstallments] = useState([{ amount: '' }, { amount: '' }]); 
   const [newFaculty, setNewFaculty] = useState({ username: '', email: '', password: '', role: ROLES.FACULTY });
+  const [actionNote, setActionNote] = useState("");
   const [isProcessing, setIsProcessing] = useState(false);
 
   const fetchData = async () => {
@@ -43,10 +47,31 @@ export default function DeptDashboard() {
       finally { setIsProcessing(false); }
   };
 
-  const handleAssignToFaculty = async (docId, facultyId) => { 
-      if(!facultyId) return alert("Select faculty."); 
-      const note = document.getElementById(`note-${docId}`)?.value || ""; 
-      try { await api.post(`/api/documents/${docId}/assign_faculty`, { faculty_id: facultyId, note: note }); alert("Assigned!"); fetchData(); } catch (e) { alert("Failed."); } 
+  const toggleFacultySelection = (facId) => {
+      setSelectedFaculties(prev => 
+          prev.includes(facId) ? prev.filter(id => id !== facId) : [...prev, facId]
+      );
+  };
+
+  const handleAssignSubmit = async (e) => { 
+      e.preventDefault();
+      setIsProcessing(true);
+      
+      if(selectedFaculties.length === 0) {
+          alert("Select at least one faculty member.");
+          setIsProcessing(false);
+          return;
+      }
+      
+      try { 
+          await api.post(`/api/documents/${assignDoc._id}/assign_faculty`, { faculty_ids: selectedFaculties, note: actionNote }); 
+          alert("Assigned!"); 
+          setAssignDoc(null);
+          setSelectedFaculties([]);
+          setActionNote("");
+          fetchData(); 
+      } catch (err) { alert("Failed."); } 
+      finally { setIsProcessing(false); }
   };
 
   const handleReturnToMain = async (docId) => { 
@@ -143,21 +168,20 @@ export default function DeptDashboard() {
                         <div className="bg-slate-50 p-4 rounded-xl border border-slate-100">
                             {doc.status === DOC_STATUS.IN_PROGRESS && (
                                 <div className="flex flex-col gap-2">
-                                    <div className="flex gap-2">
-                                        <select id={`fac-${doc._id}`} className="flex-grow p-2.5 border rounded-lg text-sm bg-white outline-none"><option value="">-- Assign --</option>{faculty.map(f => <option key={f._id} value={f._id}>{f.username}</option>)}</select>
-                                        <button onClick={() => handleAssignToFaculty(doc._id, document.getElementById(`fac-${doc._id}`)?.value)} className="bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-bold hover:bg-blue-700 transition">Assign</button>
+                                    <div className="flex justify-between items-center bg-blue-50/50 p-3 rounded-lg border border-blue-100">
+                                        <span className="text-sm font-bold text-slate-700">Assign to Team Members</span>
+                                        <button onClick={() => { setAssignDoc(doc); setSelectedFaculties(doc.current_faculty?.map(f=>f._id) || []); setActionNote(""); }} className="bg-blue-600 text-white px-5 py-2 rounded-lg text-sm font-bold hover:bg-blue-700 transition shadow">Assign Faculty</button>
                                     </div>
-                                    <input id={`note-${doc._id}`} className="w-full border p-2 rounded text-xs outline-none" placeholder="Add instructions for faculty..." />
-                                    <div className="flex justify-between mt-2">
-                                        <div className="flex gap-2"><input type="file" id={`file-${doc._id}`} className="text-xs w-32"/><button onClick={() => handleSubmitReport(doc._id, document.getElementById(`file-${doc._id}`)?.files[0])} className="bg-orange-600 text-white px-2 py-1 rounded text-xs hover:bg-orange-700 transition">Self-Upload</button></div>
-                                        <button onClick={() => handleReturnToMain(doc._id)} className="text-red-500 text-xs font-bold underline hover:text-red-700">Return</button>
+                                    <div className="flex justify-between mt-4 border-t border-slate-200 pt-4">
+                                        <div className="flex gap-2"><input type="file" id={`file-${doc._id}`} className="text-xs w-40 file:bg-orange-100 file:border-0 file:rounded file:px-2 file:py-1 file:text-orange-700 hover:file:bg-orange-200 cursor-pointer"/><button onClick={() => handleSubmitReport(doc._id, document.getElementById(`file-${doc._id}`)?.files[0])} className="bg-orange-600 text-white px-4 py-1.5 rounded text-xs font-bold hover:bg-orange-700 transition">Self-Upload Report</button></div>
+                                        <button onClick={() => handleReturnToMain(doc._id)} className="text-red-500 text-xs font-bold underline hover:text-red-700">Return to Admin</button>
                                     </div>
                                 </div>
                             )}
 
                             {doc.status === DOC_STATUS.WITH_FACULTY && (
                                 <div className="flex justify-between items-center">
-                                    <p className="text-sm text-blue-600 font-bold">⏳ With: {doc.current_faculty?.username || 'Unknown'}</p>
+                                    <p className="text-sm text-blue-600 font-bold">⏳ With: {doc.current_faculty?.map(f => f.username).join(', ') || 'Unknown'}</p>
                                     <button onClick={() => handleUnassign(doc._id)} className="text-xs bg-red-100 text-red-600 px-3 py-1 rounded font-bold border border-red-200 hover:bg-red-200 transition">Revoke</button>
                                 </div>
                             )}
@@ -165,7 +189,13 @@ export default function DeptDashboard() {
                             {doc.status === DOC_STATUS.FACULTY_REPORTED && (
                                 <div className="flex flex-col gap-3 w-full">
                                     <div className="bg-purple-50 p-3 rounded-lg border border-purple-100 flex justify-between items-center">
-                                        <div className="flex items-center gap-2"><span className="text-xl">📑</span><div><p className="text-xs font-bold text-purple-800 uppercase">Report Submitted</p><p className="text-[10px] text-purple-600">By: {doc.current_faculty?.username || 'Unknown'}</p></div></div>
+                                        <div className="flex items-center gap-2">
+                                            <span className="text-xl">📑</span>
+                                            <div>
+                                                <p className="text-xs font-bold text-purple-800 uppercase">Report Submitted</p>
+                                                <p className="text-[10px] text-purple-600">By: {doc.current_faculty?.map(f => f.username).join(', ') || 'Unknown'}</p>
+                                            </div>
+                                        </div>
                                         {doc.dept_report && (<div className="flex gap-2"><a href={getFileUrl(doc.dept_report)} target="_blank" rel="noreferrer" className="text-xs bg-white text-purple-700 px-3 py-1 rounded-lg border border-purple-200 font-bold hover:bg-purple-50">View</a><button onClick={() => forceDownload(getFileUrl(doc.dept_report), `${doc.tracking_id}_report`)} className="text-xs bg-green-50 text-green-700 px-3 py-1 rounded-lg border border-green-200 font-bold hover:bg-green-100">Download</button></div>)}
                                     </div>
                                     <div className="flex gap-3 justify-end pt-2 border-t border-slate-200/50">
@@ -180,6 +210,41 @@ export default function DeptDashboard() {
             </div>
         </div>
       </main>
+
+      {/* ASSIGN FACULTY MODAL */}
+      {assignDoc && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 backdrop-blur-sm p-4">
+            <div className="bg-white p-8 rounded-xl shadow-2xl w-full max-w-sm animate-scale-in">
+                <h3 className="text-xl font-bold mb-4">Assign to Faculty</h3>
+                <form onSubmit={handleAssignSubmit}>
+                    <div className="mb-4">
+                        <label className="block text-xs font-bold text-slate-500 uppercase mb-2">Select Staff</label>
+                        <div className="max-h-40 overflow-y-auto border border-slate-200 rounded-lg bg-slate-50 p-2 space-y-1">
+                            {faculty.map(f => (
+                                <label key={f._id} className="flex items-center gap-2 p-2 hover:bg-blue-50 rounded cursor-pointer transition">
+                                    <input 
+                                        type="checkbox" 
+                                        className="w-4 h-4 text-blue-600 rounded focus:ring-blue-500"
+                                        checked={selectedFaculties.includes(f._id)}
+                                        onChange={() => toggleFacultySelection(f._id)}
+                                    />
+                                    <span className="text-sm font-semibold text-slate-700">{f.username}</span>
+                                </label>
+                            ))}
+                            {faculty.length === 0 && <p className="text-xs text-slate-400 italic p-2">No faculty available. Create one first.</p>}
+                        </div>
+                    </div>
+
+                    <textarea className="w-full border p-3 rounded-lg mb-6 bg-slate-50 text-sm h-24 resize-none focus:ring-2 focus:ring-blue-500 outline-none" placeholder="Add instructions for faculty..." value={actionNote} onChange={(e) => setActionNote(e.target.value)}></textarea>
+                    
+                    <div className="flex gap-3 justify-end">
+                        <button type="button" onClick={() => { setAssignDoc(null); setSelectedFaculties([]); }} className="px-4 py-2 text-slate-600 font-bold">Cancel</button>
+                        <button type="submit" disabled={isProcessing} className="px-4 py-2 bg-blue-600 text-white font-bold rounded-lg shadow disabled:opacity-50">Assign Selected</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+      )}
 
       {/* Payment Modal */}
       {paymentDoc && (
@@ -204,7 +269,7 @@ export default function DeptDashboard() {
                                     />
                                     {index > 0 && <button type="button" onClick={() => handleRemoveInstallment(index)} className="text-red-500 font-bold text-xl hover:text-red-700">&times;</button>}
                                 </div>
-                                {index === 0 && <p className="text-[10px] text-slate-400">If 0, client won't be charged immediately.</p>}
+                                {index === 0 && <p className="text-[10px] text-slate-400">Enter 0 if no advance is required.</p>}
                             </div>
                         ))}
                     </div>
@@ -218,7 +283,7 @@ export default function DeptDashboard() {
         </div>
       )}
 
-      {/* Info Modal */}
+      {/* Info Modal handling Array mappings */}
       {infoDoc && (
           <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 backdrop-blur-sm p-4">
               <div className="bg-white p-6 rounded-xl w-full max-w-lg shadow-2xl animate-scale-in">
@@ -236,18 +301,41 @@ export default function DeptDashboard() {
                   <div className="space-y-4 text-sm">
                       <div className="bg-blue-50 p-3 rounded-lg border border-blue-100 flex justify-between"><div><p className="text-xs font-bold text-blue-800 uppercase">ID</p><p className="font-mono text-lg font-bold text-blue-900">{infoDoc.tracking_id}</p></div><div className="text-right"><p className="text-xs font-bold text-blue-800 uppercase">Fee</p><p className="font-bold">{infoDoc.fee_status}</p></div></div>
                       <div className="bg-slate-50 p-4 rounded-lg border border-slate-200 space-y-3">
+                          <h4 className="text-xs font-bold text-slate-500 uppercase border-b pb-2">Timeline Events</h4>
+                          <div className="flex justify-between"><span className="text-slate-600">Uploaded:</span><span className="font-mono">{formatIST(infoDoc.uploaded_at)}</span></div>
+                          <div className="flex justify-between"><span className="text-slate-600">Sent to Dept:</span><span className="font-mono">{infoDoc.sent_to_dept_at ? formatIST(infoDoc.sent_to_dept_at) : '-'}</span></div>
+                          
+                          {/* Array mapping for Departments */}
+                          {infoDoc.current_dept && infoDoc.current_dept.length > 0 && (
+                               <div className="flex justify-between pl-4 text-xs"><span className="text-slate-500">↳ Assigned Dept Admins:</span><span className="font-bold text-blue-600 text-right">{infoDoc.current_dept.map(d => d.name).join(', ')}</span></div>
+                          )}
+
+                          <div className="flex justify-between pl-4 border-l-2 border-yellow-200"><span className="text-slate-600">↳ Faculty Assigned:</span><span className="font-mono text-xs">{infoDoc.assigned_to_faculty_at ? formatIST(infoDoc.assigned_to_faculty_at) : '-'}</span></div>
+                          
+                          {/* Array mapping for Faculty */}
+                          {infoDoc.current_faculty && infoDoc.current_faculty.length > 0 && (
+                               <div className="flex justify-between pl-8 text-xs"><span className="text-slate-500">↳ Assigned Staff:</span><span className="font-bold text-orange-600 text-right">{infoDoc.current_faculty.map(f => f.username).join(', ')}</span></div>
+                          )}
+
+                          <div className="flex justify-between pl-4 border-l-2 border-purple-200"><span className="text-slate-600">↳ Faculty Reported:</span><span className="font-mono text-xs">{infoDoc.faculty_processed_at ? formatIST(infoDoc.faculty_processed_at) : '-'}</span></div>
+                          <div className="flex justify-between"><span className="text-slate-600">Dept Approved:</span><span className="font-mono">{infoDoc.dept_processed_at ? formatIST(infoDoc.dept_processed_at) : '-'}</span></div>
                           <div className="flex justify-between border-t pt-2 mt-2"><span className="text-slate-800 font-bold">Completed:</span><span className="font-mono font-bold text-green-600">{infoDoc.final_report_sent_at ? formatIST(infoDoc.final_report_sent_at) : '-'}</span></div>
                       </div>
                       
-                      {infoDoc.fee_total > 0 && (<div className="bg-blue-50/50 p-3 rounded-lg border border-blue-100"><span className="text-xs font-bold text-blue-800 uppercase block mb-2">Financial Lifecycle (₹{infoDoc.fee_total})</span>{infoDoc.installments?.map((inst, idx) => (
-                          <div key={inst._id} className="flex justify-between items-center text-xs mt-1 border-b border-blue-100 pb-1">
-                              <span className="text-slate-600">↳ {idx===0?"Advance":"Balance"} (₹{inst.amount}):</span>
-                              <div className="flex items-center gap-2">
-                                  <span className={inst.status==='Paid'?"text-green-600 font-bold":"text-red-500 font-bold"}>{inst.status === 'Paid' ? 'Paid' : inst.amount === 0 ? 'N/A' : 'Pending'}</span>
-                                  {inst.status === 'Pending' && inst.amount > 0 && <button onClick={() => handleSendReminder(infoDoc._id, inst._id)} className="bg-orange-100 text-orange-600 px-2 py-0.5 rounded border border-orange-200 text-[10px] font-bold hover:bg-orange-200">🔔 Notify</button>}
-                              </div>
+                      {infoDoc.fee_total > 0 && (
+                          <div className="bg-blue-50/50 p-3 rounded-lg border border-blue-100">
+                              <span className="text-xs font-bold text-blue-800 uppercase block mb-2">Financial Lifecycle (₹{infoDoc.fee_total})</span>
+                              {infoDoc.installments?.map((inst, idx) => (
+                                  <div key={inst._id} className="flex justify-between items-center text-xs mt-1 border-b border-blue-100 pb-1 last:border-0">
+                                      <span className="text-slate-600">↳ {idx===0 ? "Advance" : "Balance"} (₹{inst.amount}):</span>
+                                      <div className="flex items-center gap-2">
+                                          <span className={inst.status==='Paid'?"text-green-600 font-bold":"text-red-500 font-bold"}>{inst.status === 'Paid' ? `Paid: ${formatIST(inst.paid_at)}` : 'Unpaid'}</span>
+                                          {inst.status === 'Pending' && inst.amount > 0 && <button onClick={() => handleSendReminder(infoDoc._id, inst._id)} className="bg-orange-100 text-orange-600 px-2 py-0.5 rounded border border-orange-200 text-[10px] font-bold hover:bg-orange-200">🔔 Notify</button>}
+                                      </div>
+                                  </div>
+                              ))}
                           </div>
-                      ))}</div>)}
+                      )}
                       
                       {infoDoc.dept_report && (<div className="mt-4 flex gap-2"><a href={getFileUrl(infoDoc.dept_report)} target="_blank" rel="noopener noreferrer" className="flex-1 block text-center bg-purple-600 text-white py-2 rounded font-bold hover:bg-purple-700 transition">View Report</a><button onClick={() => forceDownload(getFileUrl(infoDoc.dept_report), `${infoDoc.tracking_id}_report`)} className="flex-1 block text-center bg-green-600 text-white py-2 rounded font-bold hover:bg-green-700 transition">Download Report</button></div>)}
                       {infoDoc.status === DOC_STATUS.DEPT_REPORTED && (<button onClick={() => handleForwardToClient(infoDoc._id)} className="w-full bg-green-600 text-white py-3 rounded-lg font-bold shadow hover:bg-green-700 mt-2 transition">Forward Final Report to Client</button>)}

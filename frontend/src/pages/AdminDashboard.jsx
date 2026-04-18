@@ -17,11 +17,12 @@ export default function AdminDashboard() {
   
   const [viewUserHistory, setViewUserHistory] = useState(null);
   const [routingDoc, setRoutingDoc] = useState(null);
+  const [selectedRoutes, setSelectedRoutes] = useState([]); // Holds array of selected Dept IDs
   const [infoDoc, setInfoDoc] = useState(null); 
   const [paymentDoc, setPaymentDoc] = useState(null); 
   
   const [installments, setInstallments] = useState([{ amount: '' }, { amount: '' }]); 
-  const [newUser, setNewUser] = useState({ username: '', email: '', password: '', role: ROLES.CLIENT });
+  const [newUser, setNewUser] = useState({ username: '', email: '', password: '', role: ROLES.CLIENT, department: '', newDepartmentName: '' });
   const [actionNote, setActionNote] = useState("");
   const [isProcessing, setIsProcessing] = useState(false);
 
@@ -54,7 +55,7 @@ export default function AdminDashboard() {
   const chartData = [
     { name: 'Pending', count: countState(DOC_STATUS.REVIEW_REQUIRED) + countState(DOC_STATUS.RETURNED_TO_MAIN), fill: '#F59E0B' },     
     { name: 'Active', count: countState(DOC_STATUS.IN_PROGRESS) + countState(DOC_STATUS.WITH_FACULTY) + countState(DOC_STATUS.FACULTY_REPORTED) + countState(DOC_STATUS.DEPT_REPORTED), fill: '#3B82F6' },        
-    { name: 'Done', count: countState(DOC_STATUS.COMPLETED), fill: '#10B981' },       
+    { name: 'Done', count: countState(DOC_STATUS.COMPLETED), fill: '#10B981' },        
     { name: 'Blocked', count: countState(DOC_STATUS.DECLINED) + countState(DOC_STATUS.FROZEN), fill: '#EF4444' }            
   ];
 
@@ -67,18 +68,13 @@ export default function AdminDashboard() {
       return true;
   });
 
-  const handleUserAction = async (id, action) => {
-    if(!window.confirm(`Confirm ${action}?`)) return;
-    try { await api.post(`/api/users/${id}/${action}`); fetchData(); } catch (error) { alert("Action failed."); }
-  };
-
   const handleCreateUser = async (e) => {
     e.preventDefault();
     setIsProcessing(true);
     try { 
         await api.post('/api/users/', newUser); 
         alert(`✅ User ${newUser.username} created!`); 
-        setNewUser({ username: '', email: '', password: '', role: ROLES.CLIENT }); 
+        setNewUser({ username: '', email: '', password: '', role: ROLES.CLIENT, department: '', newDepartmentName: '' }); 
         fetchData(); 
     } catch (error) { alert(error.response?.data?.error || "Failed to create user."); }
     finally { setIsProcessing(false); }
@@ -92,15 +88,28 @@ export default function AdminDashboard() {
       try { await api.post(`/api/documents/${id}/decline`, { note }); fetchData(); } catch (e) { alert("Decline failed"); } 
   };
   
+  const toggleRouteSelection = (deptId) => {
+      setSelectedRoutes(prev => 
+          prev.includes(deptId) ? prev.filter(id => id !== deptId) : [...prev, deptId]
+      );
+  };
+
   const handleRouteSubmit = async (e) => {
     e.preventDefault();
     setIsProcessing(true);
+    
+    if (selectedRoutes.length === 0) {
+        alert("Select at least one Dept Admin / Department");
+        setIsProcessing(false);
+        return;
+    }
+
     try { 
         await api.post(`/api/documents/${routingDoc._id}/route_to`, { 
-            department_id: e.target.dept.value,
+            department_ids: selectedRoutes,
             note: actionNote
         }); 
-        alert("Routed Successfully!"); setRoutingDoc(null); setActionNote(""); fetchData(); 
+        alert("Routed Successfully!"); setRoutingDoc(null); setSelectedRoutes([]); setActionNote(""); fetchData(); 
     } catch (error) { alert(error.response?.data?.error || "Failed to route."); }
     finally { setIsProcessing(false); }
   };
@@ -166,6 +175,11 @@ export default function AdminDashboard() {
       finally { setIsProcessing(false); }
   };
 
+  // --- Identify if AI suggestion matches a real department in the database ---
+  const matchedDept = routingDoc?.ai_suggested_dept 
+    ? depts.find(d => d.name.toLowerCase() === routingDoc.ai_suggested_dept.toLowerCase()) 
+    : null;
+
   return (
     <div className="min-h-screen bg-slate-50 font-sans">
       <Navbar toggleHistory={() => setShowHistory(!showHistory)} />
@@ -188,7 +202,42 @@ export default function AdminDashboard() {
             <div className="space-y-8">
                 <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100"><h3 className="font-bold text-slate-800 mb-4">Traffic</h3><div className="h-48 w-full"><ResponsiveContainer width="100%" height="100%"><BarChart data={chartData}><XAxis dataKey="name" axisLine={false} tickLine={false} fontSize={10} /><Tooltip cursor={{fill: '#f3f4f6'}} contentStyle={{borderRadius:'8px'}} /><Bar dataKey="count" radius={[4,4,0,0]}>{chartData.map((e,i)=><Cell key={i} fill={e.fill}/>)}</Bar></BarChart></ResponsiveContainer></div></div>
                 <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100"><h3 className="font-bold text-slate-800 mb-4 border-b pb-2">Department Load</h3><div className="space-y-3">{deptStats.map((d, i) => (<div key={i} className="flex justify-between items-center text-sm"><span className="font-medium text-slate-600">{d.name}</span><span className="px-2 py-1 rounded-full text-xs font-bold bg-blue-100 text-blue-700">{d.count} Pending</span></div>))}{deptStats.length === 0 && <p className="text-xs text-slate-400 italic">All departments clear.</p>}</div></div>
-                <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100"><h3 className="font-bold text-slate-800 mb-4 border-b pb-2">Provision User</h3><form onSubmit={handleCreateUser} className="space-y-3"><input className="w-full border p-2 rounded text-xs outline-none focus:border-blue-500" placeholder="Username" value={newUser.username} onChange={e => setNewUser({...newUser, username: e.target.value})} required /><input className="w-full border p-2 rounded text-xs outline-none focus:border-blue-500" placeholder="Email" type="email" value={newUser.email} onChange={e => setNewUser({...newUser, email: e.target.value})} required /><input className="w-full border p-2 rounded text-xs outline-none focus:border-blue-500" placeholder="Password" type="password" value={newUser.password} onChange={e => setNewUser({...newUser, password: e.target.value})} required /><select className="w-full border p-2 rounded text-xs outline-none focus:border-blue-500" value={newUser.role} onChange={e => setNewUser({...newUser, role: e.target.value})}><option value={ROLES.CLIENT}>Client</option><option value={ROLES.DEPT_ADMIN}>Dept Admin</option></select><button disabled={isProcessing} className="w-full bg-slate-900 hover:bg-slate-800 text-white py-2 rounded font-bold text-xs transition disabled:opacity-50">Create Account</button></form></div>
+                
+                <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100">
+                    <h3 className="font-bold text-slate-800 mb-4 border-b pb-2">Provision User</h3>
+                    <form onSubmit={handleCreateUser} className="space-y-3">
+                        <input className="w-full border p-2 rounded text-xs outline-none focus:border-blue-500" placeholder="Username" value={newUser.username} onChange={e => setNewUser({...newUser, username: e.target.value})} required />
+                        <input className="w-full border p-2 rounded text-xs outline-none focus:border-blue-500" placeholder="Email" type="email" value={newUser.email} onChange={e => setNewUser({...newUser, email: e.target.value})} required />
+                        <input className="w-full border p-2 rounded text-xs outline-none focus:border-blue-500" placeholder="Password" type="password" value={newUser.password} onChange={e => setNewUser({...newUser, password: e.target.value})} required />
+                        <select className="w-full border p-2 rounded text-xs outline-none focus:border-blue-500" value={newUser.role} onChange={e => setNewUser({...newUser, role: e.target.value})}>
+                            <option value={ROLES.CLIENT}>Client</option>
+                            <option value={ROLES.DEPT_ADMIN}>Dept Admin</option>
+                        </select>
+                        
+                        {newUser.role === ROLES.DEPT_ADMIN && (
+                            <div className="space-y-2 p-3 bg-slate-50 border border-slate-200 rounded-lg">
+                                <label className="text-[10px] font-bold text-slate-500 uppercase">Assign Department</label>
+                                <select 
+                                    className="w-full border p-2 rounded text-xs outline-none focus:border-blue-500" 
+                                    value={newUser.department || ""} 
+                                    onChange={e => setNewUser({...newUser, department: e.target.value, newDepartmentName: ''})}
+                                >
+                                    <option value="">-- Select Existing Department --</option>
+                                    {depts.map(d => <option key={d._id} value={d._id}>{d.name}</option>)}
+                                </select>
+                                <div className="text-center text-xs text-slate-400 font-bold">- OR -</div>
+                                <input 
+                                    className="w-full border p-2 rounded text-xs outline-none focus:border-blue-500" 
+                                    placeholder="Create New Department Name" 
+                                    value={newUser.newDepartmentName || ''} 
+                                    onChange={e => setNewUser({...newUser, newDepartmentName: e.target.value, department: ''})} 
+                                />
+                            </div>
+                        )}
+
+                        <button disabled={isProcessing} className="w-full bg-slate-900 hover:bg-slate-800 text-white py-2 rounded font-bold text-xs transition disabled:opacity-50">Create Account</button>
+                    </form>
+                </div>
             </div>
 
             <div className="lg:col-span-2 space-y-8">
@@ -199,13 +248,20 @@ export default function AdminDashboard() {
                     </div>
                     <div className="overflow-x-auto max-h-[600px]">
                         <table className="w-full text-left text-sm">
-                            <thead className="bg-slate-50 text-slate-500 uppercase text-xs sticky top-0"><tr><th className="p-4">Tracking ID</th><th className="p-4">Status & Fee</th><th className="p-4 text-center">Controls</th></tr></thead>
+                            <thead className="bg-slate-50 text-slate-500 uppercase text-xs sticky top-0"><tr><th className="p-4">Tracking ID & AI</th><th className="p-4">Status & Fee</th><th className="p-4 text-center">Controls</th></tr></thead>
                             <tbody className="divide-y divide-slate-100">
                                 {filteredDocs.length === 0 ? <tr><td colSpan="3" className="text-center p-6 text-slate-400">No documents found.</td></tr> : filteredDocs.map(doc => (
                                     <tr key={doc._id} className="hover:bg-slate-50 transition">
                                         <td className="p-4">
                                             <a href={getFileUrl(doc.file)} target="_blank" rel="noopener noreferrer" className="font-mono text-blue-600 font-bold hover:underline">{doc.tracking_id}</a>
                                             <div className="text-[10px] text-slate-400">Owner: {doc.client_username || 'Unknown'}</div>
+                                            
+                                            {doc.ai_suggested_dept && (
+                                                <div className="text-[10px] text-purple-600 mt-1 font-bold flex items-center gap-1 bg-purple-50 inline-block px-2 py-0.5 rounded border border-purple-100" title="Click Route to review AI suggestion">
+                                                    🤖 AI: {doc.ai_suggested_dept}
+                                                </div>
+                                            )}
+
                                             {doc.dept_report && (<div className="flex gap-2 mt-1"><a href={getFileUrl(doc.dept_report)} target="_blank" rel="noopener noreferrer" className="text-[10px] bg-purple-50 text-purple-700 px-2 py-0.5 rounded border border-purple-200 font-bold hover:bg-purple-100 transition">View</a><button onClick={() => forceDownload(getFileUrl(doc.dept_report), `${doc.tracking_id}_final`)} className="text-[10px] bg-green-50 text-green-700 px-2 py-0.5 rounded border border-green-200 font-bold hover:bg-green-100 transition cursor-pointer">Download</button></div>)}
                                         </td>
                                         <td className="p-4">
@@ -219,7 +275,7 @@ export default function AdminDashboard() {
                                                 <button onClick={() => setInfoDoc(doc)} className="w-8 h-8 rounded-full bg-slate-100 text-slate-500 hover:bg-blue-100 hover:text-blue-600 transition flex items-center justify-center" title="Details">ℹ️</button>
                                                 {doc.fee_total === 0 ? (<button onClick={() => { setPaymentDoc(doc); setInstallments([{amount: ''}, {amount: ''}]); }} className="w-8 h-8 rounded-full bg-green-100 text-green-600 hover:bg-green-200 transition flex items-center justify-center font-bold text-sm" title="Request Payment">₹</button>) : <div className="w-8"></div>}
                                                 <button onClick={() => toggleFreeze(doc._id)} className="w-8 h-8 rounded-full bg-gray-100 text-gray-500 hover:bg-gray-200 transition flex items-center justify-center text-sm" title={doc.is_frozen ? "Unfreeze" : "Freeze"}>{doc.is_frozen ? "🔒" : "❄️"}</button>
-                                                <button onClick={() => setRoutingDoc(doc)} className="px-3 py-1.5 rounded-lg bg-blue-50 text-blue-600 text-xs font-bold border border-blue-200 hover:bg-blue-100 transition">Route</button>
+                                                <button onClick={() => { setRoutingDoc(doc); setSelectedRoutes(doc.current_dept?.map(d=>d._id) || []); }} className="px-3 py-1.5 rounded-lg bg-blue-50 text-blue-600 text-xs font-bold border border-blue-200 hover:bg-blue-100 transition">Route</button>
                                                 <button onClick={() => declineDoc(doc._id)} className="w-8 h-8 rounded-full bg-red-100 text-red-600 hover:bg-red-200 transition flex items-center justify-center font-bold" title="Decline">✕</button>
                                             </div>
                                         </td>
@@ -247,18 +303,68 @@ export default function AdminDashboard() {
       {/* --- MODALS --- */}
       {viewUserHistory && <ProfileModal targetUser={viewUserHistory} onClose={() => setViewUserHistory(null)} />}
       
+      {/* ROUTING MODAL: Updated with Checkboxes & Prominent AI Box */}
       {routingDoc && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 backdrop-blur-sm p-4">
             <div className="bg-white p-8 rounded-xl shadow-2xl w-full max-w-sm animate-scale-in">
                 <h3 className="text-xl font-bold mb-4">Route Document</h3>
+
+                {/* AI SUGGESTION BOX */}
+                <div className="mb-6 p-4 bg-purple-50 border-2 border-purple-300 shadow-sm rounded-lg flex flex-col gap-2">
+                    <div className="flex items-center gap-2 text-purple-900 font-extrabold text-sm">
+                        <span className="text-2xl">🤖</span> AI Routing Suggestion
+                    </div>
+                    <p className="text-xs text-purple-800 font-medium">
+                        Suggested: <strong className="text-lg bg-white px-2 py-1 rounded shadow-sm inline-block my-1">
+                            {matchedDept ? matchedDept.name : 'N/A'}
+                        </strong> <br/>
+                        Confidence: {routingDoc.ai_confidence || 0}%
+                    </p>
+                    
+                    {routingDoc.ai_suggested_dept && !matchedDept && (
+                        <p className="text-[10px] text-red-500 italic mt-1 leading-tight">
+                            Note: AI suggested "{routingDoc.ai_suggested_dept}", but no exact match was found in your departments.
+                        </p>
+                    )}
+                    
+                    {matchedDept && (
+                        <button 
+                            type="button"
+                            onClick={() => {
+                                if(!selectedRoutes.includes(matchedDept._id)) {
+                                    setSelectedRoutes([...selectedRoutes, matchedDept._id]);
+                                }
+                            }}
+                            className="mt-2 bg-purple-600 hover:bg-purple-700 text-white text-xs font-bold py-2 px-4 rounded-lg shadow transition self-start"
+                        >
+                            + Apply Suggestion
+                        </button>
+                    )}
+                </div>
+
                 <form onSubmit={handleRouteSubmit}>
-                    <select name="dept" className="w-full border p-3 rounded-lg mb-4 bg-slate-50 outline-none focus:ring-2 focus:ring-blue-500" required>
-                        <option value="">-- Choose Department --</option>
-                        {depts.map(d => (<option key={d._id} value={d._id}>{d.name}</option>))}
-                    </select>
-                    <textarea className="w-full border p-3 rounded-lg mb-6 bg-slate-50 text-sm h-24 resize-none focus:ring-2 focus:ring-blue-500 outline-none" placeholder="Add remarks for Dept Admin..." value={actionNote} onChange={(e) => setActionNote(e.target.value)}></textarea>
+                    <div className="mb-4">
+                        <label className="block text-xs font-bold text-slate-500 uppercase mb-2">Select Dept Admins</label>
+                        <div className="max-h-40 overflow-y-auto border border-slate-200 rounded-lg bg-slate-50 p-2 space-y-1">
+                            {depts.map(d => (
+                                <label key={d._id} className="flex items-center gap-2 p-2 hover:bg-blue-50 rounded cursor-pointer transition">
+                                    <input 
+                                        type="checkbox" 
+                                        className="w-4 h-4 text-blue-600 rounded focus:ring-blue-500"
+                                        checked={selectedRoutes.includes(d._id)}
+                                        onChange={() => toggleRouteSelection(d._id)}
+                                    />
+                                    <span className="text-sm font-semibold text-slate-700">{d.name}</span>
+                                </label>
+                            ))}
+                            {depts.length === 0 && <p className="text-xs text-slate-400 italic p-2">No departments available.</p>}
+                        </div>
+                    </div>
+
+                    <textarea className="w-full border p-3 rounded-lg mb-6 bg-slate-50 text-sm h-24 resize-none focus:ring-2 focus:ring-blue-500 outline-none" placeholder="Add remarks..." value={actionNote} onChange={(e) => setActionNote(e.target.value)}></textarea>
+                    
                     <div className="flex gap-3 justify-end">
-                        <button type="button" onClick={() => setRoutingDoc(null)} className="px-4 py-2 text-slate-600 font-bold">Cancel</button>
+                        <button type="button" onClick={() => { setRoutingDoc(null); setSelectedRoutes([]); }} className="px-4 py-2 text-slate-600 font-bold">Cancel</button>
                         <button type="submit" disabled={isProcessing} className="px-4 py-2 bg-blue-600 text-white font-bold rounded-lg shadow disabled:opacity-50">Confirm Route</button>
                     </div>
                 </form>
@@ -266,6 +372,7 @@ export default function AdminDashboard() {
         </div>
       )}
       
+      {/* Payment Modal */}
       {paymentDoc && (
         <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 backdrop-blur-sm p-4">
             <div className="bg-white p-8 rounded-xl shadow-2xl w-full max-w-md animate-scale-in max-h-[90vh] overflow-y-auto">
@@ -288,7 +395,7 @@ export default function AdminDashboard() {
                                     />
                                     {index > 0 && <button type="button" onClick={() => handleRemoveInstallment(index)} className="text-red-500 font-bold text-xl hover:text-red-700">&times;</button>}
                                 </div>
-                                {index === 0 && <p className="text-[10px] text-slate-400">Enter 0 if no advance is required.</p>}
+                                {index === 0 && <p className="text-[10px] text-slate-400">If 0, client won't be charged immediately.</p>}
                             </div>
                         ))}
                     </div>
@@ -358,7 +465,19 @@ export default function AdminDashboard() {
                           <h4 className="text-xs font-bold text-slate-500 uppercase border-b pb-2">Timeline Events</h4>
                           <div className="flex justify-between"><span className="text-slate-600">Uploaded:</span><span className="font-mono">{formatIST(infoDoc.uploaded_at)}</span></div>
                           <div className="flex justify-between"><span className="text-slate-600">Sent to Dept:</span><span className="font-mono">{infoDoc.sent_to_dept_at ? formatIST(infoDoc.sent_to_dept_at) : '-'}</span></div>
+                          
+                          {/* Array mapping for Departments */}
+                          {infoDoc.current_dept && infoDoc.current_dept.length > 0 && (
+                               <div className="flex justify-between pl-4 text-xs"><span className="text-slate-500">↳ Assigned Dept Admins:</span><span className="font-bold text-blue-600 text-right">{infoDoc.current_dept.map(d => d.name).join(', ')}</span></div>
+                          )}
+
                           <div className="flex justify-between pl-4 border-l-2 border-yellow-200"><span className="text-slate-600">↳ Faculty Assigned:</span><span className="font-mono text-xs">{infoDoc.assigned_to_faculty_at ? formatIST(infoDoc.assigned_to_faculty_at) : '-'}</span></div>
+                          
+                          {/* Array mapping for Faculty */}
+                          {infoDoc.current_faculty && infoDoc.current_faculty.length > 0 && (
+                               <div className="flex justify-between pl-8 text-xs"><span className="text-slate-500">↳ Assigned Staff:</span><span className="font-bold text-orange-600 text-right">{infoDoc.current_faculty.map(f => f.username).join(', ')}</span></div>
+                          )}
+
                           <div className="flex justify-between pl-4 border-l-2 border-purple-200"><span className="text-slate-600">↳ Faculty Reported:</span><span className="font-mono text-xs">{infoDoc.faculty_processed_at ? formatIST(infoDoc.faculty_processed_at) : '-'}</span></div>
                           <div className="flex justify-between"><span className="text-slate-600">Dept Approved:</span><span className="font-mono">{infoDoc.dept_processed_at ? formatIST(infoDoc.dept_processed_at) : '-'}</span></div>
                           <div className="flex justify-between border-t pt-2 mt-2"><span className="text-slate-800 font-bold">Completed:</span><span className="font-mono font-bold text-green-600">{infoDoc.final_report_sent_at ? formatIST(infoDoc.final_report_sent_at) : '-'}</span></div>
@@ -371,7 +490,7 @@ export default function AdminDashboard() {
                                   <div key={inst._id} className="flex justify-between items-center text-xs mt-1 border-b border-blue-100 pb-1 last:border-0">
                                       <span className="text-slate-600">↳ {idx===0 ? "Advance" : "Balance"} (₹{inst.amount}):</span>
                                       <div className="flex items-center gap-2">
-                                          <span className={inst.status==='Paid'?"text-green-600 font-bold":"text-red-500 font-bold"}>{inst.status === 'Paid' ? 'Paid' : inst.amount === 0 ? 'N/A' : 'Pending'}</span>
+                                          <span className={inst.status==='Paid'?"text-green-600 font-bold":"text-red-500 font-bold"}>{inst.status === 'Paid' ? `Paid: ${formatIST(inst.paid_at)}` : 'Unpaid'}</span>
                                           {inst.status === 'Pending' && inst.amount > 0 && <button onClick={() => handleSendReminder(infoDoc._id, inst._id)} className="bg-orange-100 text-orange-600 px-2 py-0.5 rounded border border-orange-200 text-[10px] font-bold hover:bg-orange-200">🔔 Notify</button>}
                                       </div>
                                   </div>
@@ -379,9 +498,9 @@ export default function AdminDashboard() {
                           </div>
                       )}
                       
-                      {infoDoc.dept_report && (<div className="mt-4 flex gap-2"><a href={getFileUrl(infoDoc.dept_report)} target="_blank" rel="noopener noreferrer" className="flex-1 block text-center bg-purple-600 text-white py-2 rounded font-bold hover:bg-purple-700">View Report</a><button onClick={() => forceDownload(getFileUrl(infoDoc.dept_report), `${infoDoc.tracking_id}_report`)} className="flex-1 block text-center bg-green-600 text-white py-2 rounded font-bold hover:bg-green-700">Download Report</button></div>)}
-                      {infoDoc.status === DOC_STATUS.DEPT_REPORTED && (<button onClick={() => handleForwardToClient(infoDoc._id)} className="w-full bg-green-600 text-white py-3 rounded-lg font-bold shadow hover:bg-green-700 mt-2">Forward Final Report to Client</button>)}
-                      <button onClick={() => setInfoDoc(null)} className="w-full bg-slate-100 py-2 rounded-lg font-bold hover:bg-slate-200 mt-2">Close</button>
+                      {infoDoc.dept_report && (<div className="mt-4 flex gap-2"><a href={getFileUrl(infoDoc.dept_report)} target="_blank" rel="noopener noreferrer" className="flex-1 block text-center bg-purple-600 text-white py-2 rounded font-bold hover:bg-purple-700 transition">View Report</a><button onClick={() => forceDownload(getFileUrl(infoDoc.dept_report), `${infoDoc.tracking_id}_report`)} className="flex-1 block text-center bg-green-600 text-white py-2 rounded font-bold hover:bg-green-700 transition">Download Report</button></div>)}
+                      {infoDoc.status === DOC_STATUS.DEPT_REPORTED && (<button onClick={() => handleForwardToClient(infoDoc._id)} className="w-full bg-green-600 text-white py-3 rounded-lg font-bold shadow hover:bg-green-700 mt-2 transition">Forward Final Report to Client</button>)}
+                      <button onClick={() => setInfoDoc(null)} className="w-full bg-slate-100 py-2 rounded-lg font-bold hover:bg-slate-200 mt-2 transition">Close</button>
                   </div>
               </div>
           </div>

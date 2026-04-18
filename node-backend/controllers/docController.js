@@ -1,6 +1,7 @@
 const { Document, Department, ActivityLog, User } = require('../models');
 const { v4: uuidv4 } = require('uuid');
 const { sendMail } = require('../utils/mailer');
+const { analyzeDocumentWithGemini } = require('../utils/gemini');
 const mongoose = require('mongoose');
 const fs = require('fs');
 
@@ -22,9 +23,9 @@ exports.getDocs = async (req, res) => {
     try {
         let query = {};
         if (req.user.role === 'Dept_Admin') {
-            query = { current_dept: req.user.department, status: { $ne: 'Declined' } };
+            query = { current_dept: { $in: [req.user.department] }, status: { $ne: 'Declined' } };
         } else if (req.user.role === 'Faculty') {
-            query = { current_faculty: req.user._id, status: { $ne: 'Declined' } };
+            query = { current_faculty: { $in: [req.user._id] }, status: { $ne: 'Declined' } };
         } else if (req.user.role === 'Client') {
             query = { user: req.user._id };
         }
@@ -32,7 +33,7 @@ exports.getDocs = async (req, res) => {
         let docs = await Document.find(query)
             .populate('user', 'username email')
             .populate('current_dept')
-            .populate('current_faculty', 'username')
+            .populate('current_faculty', 'username email')
             .sort({ uploaded_at: -1 });
 
         if (req.user.role === 'Client') {
@@ -74,6 +75,23 @@ exports.uploadDoc = async (req, res) => {
         addNote(doc, req.user, uploaderRole === 'Main_Admin' ? "Uploaded by Admin (Offline Mode)." : "Document Uploaded.");
         await doc.save();
 
+        // --- AI INTEGRATION: Safe execution ---
+        try {
+            const departments = await Department.find();
+            if (departments.length > 0) {
+                const deptNames = departments.map(d => d.name);
+                const aiResult = await analyzeDocumentWithGemini(req.file.path, deptNames);
+                if (aiResult && aiResult.department) {
+                    doc.ai_suggested_dept = aiResult.department;
+                    doc.ai_confidence = aiResult.confidence || 0;
+                    await doc.save();
+                }
+            }
+        } catch (aiError) {
+            console.error("Gemini AI Analysis Error:", aiError.message || aiError);
+            // Non-blocking: Document is uploaded even if AI sorting fails
+        }
+
         await ActivityLog.create({ 
             user: req.user._id, 
             action: 'Uploaded', 
@@ -101,22 +119,26 @@ exports.uploadDoc = async (req, res) => {
 exports.routeDoc = async (req, res) => {
     try {
         if (req.user.role !== 'Main_Admin') return res.status(403).json({ error: 'Unauthorized' });
-        if (!isValidId(req.params.id) || !isValidId(req.body.department_id)) return res.status(400).json({ error: "Invalid ID parameters" });
+        
+        const { department_ids, note } = req.body;
+        if (!isValidId(req.params.id) || !Array.isArray(department_ids) || department_ids.length === 0) {
+            return res.status(400).json({ error: "Invalid ID parameters. Requires array of department_ids" });
+        }
 
         const doc = await Document.findById(req.params.id);
         if (!doc) return res.status(404).json({ error: "Document not found" });
 
-        const dept = await Department.findById(req.body.department_id);
-        if (!dept) return res.status(404).json({ error: "Department not found" });
+        const depts = await Department.find({ _id: { $in: department_ids } });
+        if (!depts.length) return res.status(404).json({ error: "Departments not found" });
 
-        doc.current_dept = dept._id;
+        doc.current_dept = depts.map(d => d._id);
         doc.status = 'In_Progress';
         doc.sent_to_dept_at = new Date();
         
-        addNote(doc, req.user, req.body.note || "Routed to Department");
+        addNote(doc, req.user, note || "Routed to Department(s)");
         await doc.save();
         
-        const deptAdmins = await User.find({ role: 'Dept_Admin', department: dept._id });
+        const deptAdmins = await User.find({ role: 'Dept_Admin', department: { $in: doc.current_dept } });
         deptAdmins.forEach(admin => sendMail(admin.email, "Document Routed", `Doc (${doc.tracking_id}) routed to your department.`));
 
         res.json({ status: 'Routed' });
@@ -129,20 +151,24 @@ exports.routeDoc = async (req, res) => {
 exports.assignToFaculty = async (req, res) => {
     try {
         if (req.user.role !== 'Dept_Admin') return res.status(403).json({ error: 'Unauthorized' });
-        if (!isValidId(req.params.id) || !isValidId(req.body.faculty_id)) return res.status(400).json({ error: "Invalid ID" });
+        
+        const { faculty_ids, note } = req.body;
+        if (!isValidId(req.params.id) || !Array.isArray(faculty_ids) || faculty_ids.length === 0) {
+            return res.status(400).json({ error: "Invalid ID parameters. Requires array of faculty_ids" });
+        }
         
         const doc = await Document.findById(req.params.id);
         if (!doc) return res.status(404).json({ error: "Document not found" });
 
-        doc.current_faculty = req.body.faculty_id;
+        doc.current_faculty = faculty_ids;
         doc.status = 'With_Faculty';
         doc.assigned_to_faculty_at = new Date();
 
-        addNote(doc, req.user, req.body.note || "Assigned to Faculty");
+        addNote(doc, req.user, note || "Assigned to Faculty");
         await doc.save();
         
-        const facultyUser = await User.findById(req.body.faculty_id);
-        if (facultyUser) sendMail(facultyUser.email, "Assigned", `Doc (${doc.tracking_id}) assigned to you for review.`);
+        const facultyUsers = await User.find({ _id: { $in: faculty_ids } });
+        facultyUsers.forEach(f => sendMail(f.email, "Assigned", `Doc (${doc.tracking_id}) assigned to you for review.`));
 
         res.json({ status: 'Assigned' });
     } catch (error) { 
@@ -159,16 +185,16 @@ exports.unassignFaculty = async (req, res) => {
         const doc = await Document.findById(req.params.id).populate('current_faculty');
         if (!doc) return res.status(404).json({ error: "Document not found" });
 
-        const oldFaculty = doc.current_faculty;
+        const oldFaculties = doc.current_faculty || [];
         doc.status = 'In_Progress';
-        doc.current_faculty = null;
+        doc.current_faculty = [];
         
         addNote(doc, req.user, "Assignment Revoked (Taken Back)");
         await doc.save();
 
-        if (oldFaculty) {
-            sendMail(oldFaculty.email, "Revoked", `Doc (${doc.tracking_id}) unassigned from your queue.`);
-        }
+        oldFaculties.forEach(f => {
+            if(f.email) sendMail(f.email, "Revoked", `Doc (${doc.tracking_id}) unassigned from your queue.`);
+        });
 
         res.json({ status: 'Unassigned' });
     } catch (error) { 
@@ -191,7 +217,6 @@ exports.submitReport = async (req, res) => {
             return res.status(404).json({ error: "Document not found" });
         }
 
-        // Cleanup old report if rewriting
         if (doc.dept_report && fs.existsSync(doc.dept_report)) {
             fs.unlinkSync(doc.dept_report);
         }
@@ -210,7 +235,8 @@ exports.submitReport = async (req, res) => {
         await doc.save();
         
         if (req.user.role === 'Faculty') {
-            const deptAdmins = await User.find({ role: 'Dept_Admin', department: doc.current_dept._id });
+            const deptIds = doc.current_dept.map(d => d._id ? d._id : d);
+            const deptAdmins = await User.find({ role: 'Dept_Admin', department: { $in: deptIds } });
             deptAdmins.forEach(admin => sendMail(admin.email, "Faculty Report", `Report available for (${doc.tracking_id}).`));
         } else {
             const mainAdmins = await User.find({ role: 'Main_Admin' });
@@ -257,25 +283,23 @@ exports.rejectFacultyReport = async (req, res) => {
         const doc = await Document.findById(req.params.id).populate('current_faculty');
         if (!doc) return res.status(404).json({ error: "Document not found" });
 
-        const facultyEmail = doc.current_faculty ? doc.current_faculty.email : null;
+        const facultyEmails = doc.current_faculty ? doc.current_faculty.map(f => f.email) : [];
 
         if (doc.dept_report && fs.existsSync(doc.dept_report)) {
-            try {
-                fs.unlinkSync(doc.dept_report);
-            } catch (err) {
-                console.error("Failed to delete rejected report:", err);
-            }
+            try { fs.unlinkSync(doc.dept_report); } catch (err) {}
         }
 
         doc.status = 'In_Progress';
         doc.dept_report = null;
         doc.faculty_processed_at = null;
-        doc.current_faculty = null;
+        doc.current_faculty = [];
 
         addNote(doc, req.user, req.body.note || "Report Rejected & Reset");
         await doc.save();
 
-        if (facultyEmail) sendMail(facultyEmail, "Report Rejected", `Your report for (${doc.tracking_id}) was rejected by Dept Admin.`);
+        facultyEmails.forEach(email => {
+            if(email) sendMail(email, "Report Rejected", `Your report for (${doc.tracking_id}) was rejected by Dept Admin.`);
+        });
 
         res.json({ status: 'Rejected' });
     } catch (error) { 
@@ -351,10 +375,10 @@ exports.returnDoc = async (req, res) => {
 
         if (req.user.role === 'Faculty') { 
             doc.status = 'In_Progress'; 
-            doc.current_faculty = null; 
+            doc.current_faculty = []; 
         } else { 
             doc.status = 'Returned_To_Main'; 
-            doc.current_dept = null; 
+            doc.current_dept = []; 
         }
         await doc.save();
         res.json({ status: 'Returned' });

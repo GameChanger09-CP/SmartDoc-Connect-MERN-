@@ -12,6 +12,7 @@ exports.getDashboardStats = async (req, res) => {
         
         const deptStats = await Document.aggregate([
             { $match: { status: 'In_Progress' } },
+            { $unwind: { path: '$current_dept', preserveNullAndEmptyArrays: true } },
             { $group: { _id: '$current_dept', count: { $sum: 1 } } },
             { $lookup: { from: 'departments', localField: '_id', foreignField: '_id', as: 'dept' } },
             { $unwind: { path: '$dept', preserveNullAndEmptyArrays: true } },
@@ -36,7 +37,7 @@ exports.getPendingUsers = async (req, res) => {
 
 exports.createUser = async (req, res) => {
     try {
-        const { username, email, password, role, department } = req.body;
+        const { username, email, password, role } = req.body;
         if (!username || !email || !password || !role) return res.status(400).json({ error: "Missing required fields" });
 
         const existingUser = await User.findOne({ $or: [{ username }, { email }] });
@@ -44,13 +45,24 @@ exports.createUser = async (req, res) => {
 
         const hashedPassword = await bcrypt.hash(password, 10);
         
+        // --- FIXED: Dept_Admin Name IS the Department Name ---
+        let finalDeptId = null;
+        if (role === 'Dept_Admin') {
+            const targetDeptName = username.trim();
+            let dept = await Department.findOne({ name: targetDeptName });
+            if (!dept) {
+                dept = await Department.create({ name: targetDeptName });
+            }
+            finalDeptId = dept._id;
+        }
+
         const newUser = await User.create({
             username, 
             email, 
             password: hashedPassword, 
             role, 
             kyc_status: 'Verified',
-            department: department ? department : null
+            department: finalDeptId
         });
 
         const emailContent = `
@@ -115,7 +127,6 @@ exports.rejectUser = async (req, res) => {
             `;
             await sendMail(user.email, "Application Rejected", emailContent);
             
-            // Clean up the uploaded ID file if it exists
             if (user.gov_id) {
                 const fs = require('fs');
                 if (fs.existsSync(user.gov_id)) fs.unlinkSync(user.gov_id);
@@ -141,9 +152,23 @@ exports.getFaculty = async (req, res) => {
 
 exports.getDepartments = async (req, res) => {
     try {
+        // --- AUTO-HEAL: Ensure all Dept_Admins have a Department mapping ---
+        const deptAdmins = await User.find({ role: 'Dept_Admin' });
+        for (let admin of deptAdmins) {
+            let dept = await Department.findOne({ name: admin.username });
+            if (!dept) {
+                dept = await Department.create({ name: admin.username });
+            }
+            if (!admin.department || admin.department.toString() !== dept._id.toString()) {
+                admin.department = dept._id;
+                await admin.save();
+            }
+        }
+        // Fetch and return the updated list
         const depts = await Department.find();
         res.json(depts);
     } catch (e) { 
+        console.error("Fetch Departments Error:", e);
         res.status(500).json({ error: "Fetch failed" }); 
     }
 };
@@ -161,8 +186,6 @@ exports.searchUsers = async (req, res) => {
     try {
         const { q } = req.query;
         if (!q || typeof q !== 'string') return res.json([]);
-        
-        // Escape regex to prevent regex-injection DOS attacks
         const safeQuery = q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
         const users = await User.find({
@@ -171,7 +194,7 @@ exports.searchUsers = async (req, res) => {
                 { username: { $regex: safeQuery, $options: 'i' } },
                 { email: { $regex: safeQuery, $options: 'i' } }
             ]
-        }).select('username email _id').limit(10); // Added limit to prevent massive payload
+        }).select('username email _id').limit(10);
         
         res.json(users);
     } catch (e) { 

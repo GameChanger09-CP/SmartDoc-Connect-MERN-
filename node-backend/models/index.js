@@ -26,12 +26,12 @@ const documentSchema = new mongoose.Schema({
         enum: ['Review_Required', 'In_Progress', 'With_Faculty', 'Faculty_Reported', 'Dept_Reported', 'Completed', 'Declined', 'Frozen', 'Returned_To_Main'],
         default: 'Review_Required' 
     },
-    // CHANGED to Arrays to support multiple assignments
+    // CHANGED: Now arrays to support multiple assignments
     current_dept: [{ type: mongoose.Schema.Types.ObjectId, ref: 'Department' }],
     current_faculty: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }],
     dept_report: { type: String, default: null },
     
-    // NEW AI Suggestion fields
+    // NEW: AI Suggestion Fields
     ai_suggested_dept: { type: String, default: null },
     ai_confidence: { type: Number, default: 0.0, min: 0, max: 100 },
     

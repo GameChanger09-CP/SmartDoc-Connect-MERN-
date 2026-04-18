@@ -93,23 +93,33 @@ export default function FacultyDashboard() {
         </div>
       </main>
 
-      {/* INFO MODAL WITH NOTES */}
+      {/* INFO MODAL */}
       {infoDoc && (
           <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 backdrop-blur-sm p-4">
               <div className="bg-white p-6 rounded-xl w-full max-w-md max-h-[90vh] overflow-y-auto animate-scale-in">
-                  <div className="flex justify-between items-center mb-4 border-b pb-2"><h3 className="text-lg font-bold">Details</h3><button onClick={() => setInfoDoc(null)} className="text-xl hover:text-red-500">&times;</button></div>
+                  <div className="flex justify-between items-center mb-4 border-b pb-2">
+                      <h3 className="text-lg font-bold">Details</h3>
+                      <button onClick={() => setInfoDoc(null)} className="text-xl hover:text-red-500">&times;</button>
+                  </div>
                   <div className="mb-4 bg-slate-50 p-3 rounded border max-h-40 overflow-y-auto">
                       <p className="text-xs font-bold text-slate-400 uppercase mb-2">Communication Log</p>
-                      {infoDoc.notes && infoDoc.notes.length > 0 ? infoDoc.notes.map((n, i) => (
-                          <div key={i} className="text-xs border-b border-slate-200 pb-2 mb-2 last:border-0">
-                              <span className="font-bold text-blue-700">{n.sender} ({n.role}): </span>
-                              <span className="text-slate-700">{n.message}</span>
-                              <div className="text-[9px] text-slate-400 mt-0.5">{formatIST(n.timestamp)}</div>
+                      {infoDoc.notes && infoDoc.notes.length > 0 ? infoDoc.notes.map((y, w) => (
+                          <div key={w} className="text-xs border-b border-slate-200 pb-2 mb-2 last:border-0">
+                              <span className="font-bold text-blue-700">{y.sender} ({y.role}): </span>
+                              <span className="text-slate-700">{y.message}</span>
+                              <div className="text-[9px] text-slate-400 mt-0.5">{formatIST(y.timestamp)}</div>
                           </div>
                       )) : <p className="text-xs text-slate-400 italic">No notes.</p>}
                   </div>
                   <div className="space-y-4 text-sm">
                       <div className="flex justify-between"><span>Uploaded:</span><span className="font-mono">{formatIST(infoDoc.uploaded_at)}</span></div>
+                      
+                      {infoDoc.current_faculty && infoDoc.current_faculty.length > 1 && (
+                          <div className="text-[10px] text-slate-500 bg-slate-100 p-2 rounded">
+                              <span className="font-bold">Co-assigned Reviewers:</span> {infoDoc.current_faculty.map(f => f.username).join(', ')}
+                          </div>
+                      )}
+
                       <button onClick={() => setInfoDoc(null)} className="w-full bg-gray-100 py-2 rounded font-bold hover:bg-gray-200 transition">Close</button>
                   </div>
               </div>
