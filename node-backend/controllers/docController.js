@@ -75,7 +75,7 @@ exports.uploadDoc = async (req, res) => {
         addNote(doc, req.user, uploaderRole === 'Main_Admin' ? "Uploaded by Admin (Offline Mode)." : "Document Uploaded.");
         await doc.save();
 
-        // --- AI INTEGRATION: Safe execution ---
+        // --- AI INTEGRATION: Safe execution with Category ---
         try {
             const departments = await Department.find();
             if (departments.length > 0) {
@@ -83,13 +83,13 @@ exports.uploadDoc = async (req, res) => {
                 const aiResult = await analyzeDocumentWithGemini(req.file.path, deptNames);
                 if (aiResult && aiResult.department) {
                     doc.ai_suggested_dept = aiResult.department;
+                    doc.ai_suggested_category = aiResult.category; // Save AI Category
                     doc.ai_confidence = aiResult.confidence || 0;
                     await doc.save();
                 }
             }
         } catch (aiError) {
             console.error("Gemini AI Analysis Error:", aiError.message || aiError);
-            // Non-blocking: Document is uploaded even if AI sorting fails
         }
 
         await ActivityLog.create({ 
@@ -120,9 +120,15 @@ exports.routeDoc = async (req, res) => {
     try {
         if (req.user.role !== 'Main_Admin') return res.status(403).json({ error: 'Unauthorized' });
         
-        const { department_ids, note } = req.body;
+        // Extract doc_category from request
+        const { department_ids, note, doc_category } = req.body;
+        
         if (!isValidId(req.params.id) || !Array.isArray(department_ids) || department_ids.length === 0) {
             return res.status(400).json({ error: "Invalid ID parameters. Requires array of department_ids" });
+        }
+        
+        if (!doc_category || !['Testing', 'Consultancy', 'Both'].includes(doc_category)) {
+            return res.status(400).json({ error: "Valid Service Category (Testing, Consultancy, Both) is required." });
         }
 
         const doc = await Document.findById(req.params.id);
@@ -131,11 +137,19 @@ exports.routeDoc = async (req, res) => {
         const depts = await Department.find({ _id: { $in: department_ids } });
         if (!depts.length) return res.status(404).json({ error: "Departments not found" });
 
+        // --- UPDATE TRACKING ID WITH PREFIX ---
+        let prefix = doc_category === 'Testing' ? 'T-' : (doc_category === 'Consultancy' ? 'C-' : 'TC-');
+        // Strip any existing prefix just in case it was routed before
+        let baseTrackingId = doc.tracking_id.replace(/^(T|C|TC)\-/, '');
+        
+        doc.tracking_id = prefix + baseTrackingId;
+        doc.doc_category = doc_category;
+        
         doc.current_dept = depts.map(d => d._id);
         doc.status = 'In_Progress';
         doc.sent_to_dept_at = new Date();
         
-        addNote(doc, req.user, note || "Routed to Department(s)");
+        addNote(doc, req.user, note || `Routed to Department(s) as ${doc_category}`);
         await doc.save();
         
         const deptAdmins = await User.find({ role: 'Dept_Admin', department: { $in: doc.current_dept } });

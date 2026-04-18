@@ -21,13 +21,14 @@ exports.analyzeDocumentWithGemini = async (filePath, departmentNames) => {
         const model = genAI.getGenerativeModel({ model: "gemini-flash-latest" });        
         
         const prompt = `
-        You are a Document Sorting AI.
+        You are a Document Sorting AI for a Testing & Consultancy enterprise.
         Here is a list of valid departments: ${departmentNames.join(', ')}.
-        Look at this document. Determine which department it belongs to.
+        Look at this document. Determine which department it belongs to, AND categorize the service type.
+        Valid Categories: "Testing", "Consultancy", or "Both".
         Rules:
         1. Return ONLY a valid JSON object.
-        2. Format: { "department": "DepartmentName", "confidence": Integer(0-100) }
-        3. If the document is clearly about a department topic, give high confidence (85-100).
+        2. Format: { "department": "DepartmentName", "category": "CategoryName", "confidence": Integer(0-100) }
+        3. If the document is clearly about a department topic and specific service, give high confidence (85-100).
         `;
 
         const result = await model.generateContent([

@@ -18,6 +18,7 @@ export default function AdminDashboard() {
   const [viewUserHistory, setViewUserHistory] = useState(null);
   const [routingDoc, setRoutingDoc] = useState(null);
   const [selectedRoutes, setSelectedRoutes] = useState([]); 
+  const [docCategory, setDocCategory] = useState(""); // NEW: Category Selection
   const [infoDoc, setInfoDoc] = useState(null); 
   
   const [newUser, setNewUser] = useState({ username: '', email: '', password: '', role: ROLES.CLIENT, department: '', newDepartmentName: '' });
@@ -101,13 +102,24 @@ export default function AdminDashboard() {
         setIsProcessing(false);
         return;
     }
+    if (!docCategory) {
+        alert("Please select a Service Category (Testing, Consultancy, or Both).");
+        setIsProcessing(false);
+        return;
+    }
 
     try { 
         await api.post(`/api/documents/${routingDoc._id}/route_to`, { 
             department_ids: selectedRoutes,
+            doc_category: docCategory, // Include category
             note: actionNote
         }); 
-        alert("Routed Successfully!"); setRoutingDoc(null); setSelectedRoutes([]); setActionNote(""); fetchData(); 
+        alert("Routed Successfully!"); 
+        setRoutingDoc(null); 
+        setSelectedRoutes([]); 
+        setDocCategory(""); 
+        setActionNote(""); 
+        fetchData(); 
     } catch (error) { alert(error.response?.data?.error || "Failed to route."); }
     finally { setIsProcessing(false); }
   };
@@ -115,14 +127,6 @@ export default function AdminDashboard() {
   const handleForwardToClient = async (id) => {
       if(!window.confirm("Forward Report to Client?")) return;
       try { await api.post(`/api/documents/${id}/forward_to_client`); fetchData(); setInfoDoc(null); } catch(e) { alert("Failed"); }
-  };
-
-  const handleSendReminder = async (docId, installmentId) => {
-      if(!window.confirm("Send payment reminder email?")) return;
-      try {
-          await api.post(`/api/documents/${docId}/remind_payment/${installmentId}`);
-          alert("Reminder Sent Successfully! 📧");
-      } catch(e) { alert("Failed to send reminder."); }
   };
 
   const handleSearchUser = async (q) => {
@@ -247,13 +251,14 @@ export default function AdminDashboard() {
                                             <div className="flex flex-col gap-1 items-start">
                                                 <span className={`px-2 py-1 rounded text-[10px] font-bold uppercase border ${doc.status === DOC_STATUS.COMPLETED ? 'bg-green-50 text-green-700 border-green-200' : doc.status === DOC_STATUS.DECLINED ? 'bg-slate-200 text-slate-600 border-slate-300' : 'bg-yellow-50 text-yellow-700 border-yellow-200'}`}>{doc.status?.replace(/_/g, ' ')}</span>
                                                 {doc.fee_total > 0 && <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded border ${doc.fee_status === 'Paid' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>Fee: {doc.fee_status}</span>}
+                                                <span className="text-[9px] font-bold text-indigo-600 bg-indigo-50 border border-indigo-200 px-1.5 py-0.5 rounded uppercase">CAT: {doc.doc_category}</span>
                                             </div>
                                         </td>
                                         <td className="p-4">
                                             <div className="flex items-center justify-center gap-2">
                                                 <button onClick={() => setInfoDoc(doc)} className="w-8 h-8 rounded-full bg-slate-100 text-slate-500 hover:bg-blue-100 hover:text-blue-600 transition flex items-center justify-center" title="Details">ℹ️</button>
                                                 <button onClick={() => toggleFreeze(doc._id)} className="w-8 h-8 rounded-full bg-gray-100 text-gray-500 hover:bg-gray-200 transition flex items-center justify-center text-sm" title={doc.is_frozen ? "Unfreeze" : "Freeze"}>{doc.is_frozen ? "🔒" : "❄️"}</button>
-                                                <button onClick={() => { setRoutingDoc(doc); setSelectedRoutes(doc.current_dept?.map(d=>d._id) || []); }} className="px-3 py-1.5 rounded-lg bg-blue-50 text-blue-600 text-xs font-bold border border-blue-200 hover:bg-blue-100 transition">Route</button>
+                                                <button onClick={() => { setRoutingDoc(doc); setSelectedRoutes(doc.current_dept?.map(d=>d._id) || []); setDocCategory(doc.doc_category === 'Pending' ? '' : doc.doc_category); }} className="px-3 py-1.5 rounded-lg bg-blue-50 text-blue-600 text-xs font-bold border border-blue-200 hover:bg-blue-100 transition">Route</button>
                                                 <button onClick={() => declineDoc(doc._id)} className="w-8 h-8 rounded-full bg-red-100 text-red-600 hover:bg-red-200 transition flex items-center justify-center font-bold" title="Decline">✕</button>
                                             </div>
                                         </td>
@@ -281,34 +286,39 @@ export default function AdminDashboard() {
       {/* --- MODALS --- */}
       {viewUserHistory && <ProfileModal targetUser={viewUserHistory} onClose={() => setViewUserHistory(null)} />}
       
-      {/* ROUTING MODAL */}
+      {/* ROUTING MODAL: Category Selector + Checkboxes & AI Box */}
       {routingDoc && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 backdrop-blur-sm p-4">
             <div className="bg-white p-8 rounded-xl shadow-2xl w-full max-w-sm animate-scale-in">
                 <h3 className="text-xl font-bold mb-4">Route Document</h3>
 
+                {/* AI SUGGESTION BOX */}
                 {routingDoc.ai_suggested_dept && (
                     <div className="mb-6 p-4 bg-purple-50 border-2 border-purple-300 shadow-sm rounded-lg flex flex-col gap-2">
                         <div className="flex items-center gap-2 text-purple-900 font-extrabold text-sm">
-                            <span className="text-2xl">🤖</span> AI Routing Suggestion
+                            <span className="text-2xl">🤖</span> AI Suggestion
                         </div>
                         <p className="text-xs text-purple-800 font-medium">
-                            Suggested Dept Admin: <strong className="text-lg bg-white px-2 py-1 rounded shadow-sm inline-block my-1">{matchedDept ? matchedDept.name : 'N/A'}</strong> <br/>
+                            Dept: <strong className="bg-white px-1 py-0.5 rounded shadow-sm">{matchedDept ? matchedDept.name : 'N/A'}</strong> <br/>
+                            Category: <strong className="bg-white px-1 py-0.5 rounded shadow-sm">{routingDoc.ai_suggested_category || 'N/A'}</strong><br/>
                             Confidence: {routingDoc.ai_confidence || 0}%
                         </p>
                         
                         {routingDoc.ai_suggested_dept && !matchedDept && (
                             <p className="text-[10px] text-red-500 italic mt-1 leading-tight">
-                                Note: AI suggested "{routingDoc.ai_suggested_dept}", but no exact match was found in your departments.
+                                Note: AI suggested "{routingDoc.ai_suggested_dept}", but no exact match was found.
                             </p>
                         )}
                         
-                        {matchedDept && (
+                        {(matchedDept || routingDoc.ai_suggested_category) && (
                             <button 
                                 type="button"
                                 onClick={() => {
-                                    if(!selectedRoutes.includes(matchedDept._id)) {
+                                    if(matchedDept && !selectedRoutes.includes(matchedDept._id)) {
                                         setSelectedRoutes([...selectedRoutes, matchedDept._id]);
+                                    }
+                                    if (routingDoc.ai_suggested_category && ['Testing', 'Consultancy', 'Both'].includes(routingDoc.ai_suggested_category)) {
+                                        setDocCategory(routingDoc.ai_suggested_category);
                                     }
                                 }}
                                 className="mt-2 bg-purple-600 hover:bg-purple-700 text-white text-xs font-bold py-2 px-4 rounded-lg shadow transition self-start"
@@ -320,6 +330,18 @@ export default function AdminDashboard() {
                 )}
 
                 <form onSubmit={handleRouteSubmit}>
+                    
+                    {/* NEW: Category Dropdown */}
+                    <div className="mb-4">
+                        <label className="block text-xs font-bold text-slate-500 uppercase mb-2">Service Category</label>
+                        <select value={docCategory} onChange={e => setDocCategory(e.target.value)} className="w-full border p-3 rounded-lg bg-slate-50 outline-none focus:ring-2 focus:ring-blue-500" required>
+                            <option value="">-- Select Category --</option>
+                            <option value="Testing">Testing (T)</option>
+                            <option value="Consultancy">Consultancy (C)</option>
+                            <option value="Both">Testing & Consultancy (TC)</option>
+                        </select>
+                    </div>
+
                     <div className="mb-4">
                         <label className="block text-xs font-bold text-slate-500 uppercase mb-2">Select Dept Admins</label>
                         <div className="max-h-40 overflow-y-auto border border-slate-200 rounded-lg bg-slate-50 p-2 space-y-1">
@@ -341,7 +363,7 @@ export default function AdminDashboard() {
                     <textarea className="w-full border p-3 rounded-lg mb-6 bg-slate-50 text-sm h-24 resize-none focus:ring-2 focus:ring-blue-500 outline-none" placeholder="Add remarks..." value={actionNote} onChange={(e) => setActionNote(e.target.value)}></textarea>
                     
                     <div className="flex gap-3 justify-end">
-                        <button type="button" onClick={() => { setRoutingDoc(null); setSelectedRoutes([]); }} className="px-4 py-2 text-slate-600 font-bold">Cancel</button>
+                        <button type="button" onClick={() => { setRoutingDoc(null); setSelectedRoutes([]); setDocCategory(''); }} className="px-4 py-2 text-slate-600 font-bold">Cancel</button>
                         <button type="submit" disabled={isProcessing} className="px-4 py-2 bg-blue-600 text-white font-bold rounded-lg shadow disabled:opacity-50">Confirm Route</button>
                     </div>
                 </form>
@@ -349,6 +371,7 @@ export default function AdminDashboard() {
         </div>
       )}
 
+      {/* UPLOAD MODAL */}
       {showUploadModal && (
           <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 backdrop-blur-sm p-4">
               <div className="bg-white p-8 rounded-xl shadow-2xl w-full max-w-md animate-scale-in">
@@ -401,7 +424,7 @@ export default function AdminDashboard() {
                       )) : <p className="text-xs text-slate-400 italic">No notes available.</p>}
                   </div>
                   <div className="space-y-4 text-sm">
-                      <div className="bg-blue-50 p-3 rounded-lg border border-blue-100 flex justify-between"><div><p className="text-xs font-bold text-blue-800 uppercase">ID</p><p className="font-mono text-lg font-bold text-blue-900">{infoDoc.tracking_id}</p></div><div className="text-right"><p className="text-xs font-bold text-blue-800 uppercase">Fee</p><p className="font-bold">{infoDoc.fee_status}</p></div></div>
+                      <div className="bg-blue-50 p-3 rounded-lg border border-blue-100 flex justify-between"><div><p className="text-xs font-bold text-blue-800 uppercase">ID</p><p className="font-mono text-lg font-bold text-blue-900">{infoDoc.tracking_id}</p><span className="text-[10px] font-bold text-indigo-600 bg-white px-2 py-0.5 rounded uppercase mt-1 inline-block border">Category: {infoDoc.doc_category}</span></div><div className="text-right"><p className="text-xs font-bold text-blue-800 uppercase">Fee</p><p className="font-bold">{infoDoc.fee_status}</p></div></div>
                       <div className="bg-slate-50 p-4 rounded-lg border border-slate-200 space-y-3">
                           <h4 className="text-xs font-bold text-slate-500 uppercase border-b pb-2">Timeline Events</h4>
                           <div className="flex justify-between"><span className="text-slate-600">Uploaded:</span><span className="font-mono">{formatIST(infoDoc.uploaded_at)}</span></div>
