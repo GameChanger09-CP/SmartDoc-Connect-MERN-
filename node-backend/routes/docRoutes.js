@@ -5,7 +5,6 @@ const paymentController = require('../controllers/paymentController');
 const auth = require('../middlewares/auth');
 const upload = require('../middlewares/upload');
 
-// --- Standard Document Operations ---
 router.get('/', auth, docController.getDocs);
 router.post('/', auth, upload.single('file'), docController.uploadDoc);
 router.post('/:id/route_to', auth, docController.routeDoc);
@@ -19,15 +18,11 @@ router.post('/:id/return', auth, docController.returnDoc);
 router.post('/:id/reject_faculty_report', auth, docController.rejectFacultyReport);
 router.post('/:id/unassign_faculty', auth, docController.unassignFaculty);
 
-// --- Payment Routes ---
 router.get('/get-razorpay-key', auth, paymentController.getKey);
 router.post('/:id/request_payment', auth, paymentController.requestPayment);    
 router.post('/verify_payment', auth, paymentController.verifyPayment);
-
-// 🔥 NEW: Payment Reminder Route 🔥
 router.post('/:docId/remind_payment/:installmentId', auth, paymentController.sendPaymentReminder);
 
-// --- Public Routes (No Auth) ---
 router.get('/public-payment-info/:docId/:installmentId', docController.getPublicPaymentInfo);
 router.post('/verify-public-payment', paymentController.verifyPublicPayment);
 

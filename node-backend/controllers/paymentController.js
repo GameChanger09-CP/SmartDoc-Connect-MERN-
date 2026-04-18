@@ -1,181 +1,139 @@
 const Razorpay = require('razorpay');
 const crypto = require('crypto');
+const mongoose = require('mongoose');
 const { Document, ActivityLog } = require('../models');
 const { sendMail } = require('../utils/mailer');
 
-const razorpay = new Razorpay({
-    key_id: process.env.RAZORPAY_KEY_ID,
-    key_secret: process.env.RAZORPAY_KEY_SECRET,
-});
+const isValidId = (id) => mongoose.Types.ObjectId.isValid(id);
+const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:5173';
 
-// --- CONFIGURATION ---
-const GATEWAY_SURCHARGE_PERCENT = 0.03; 
-
-// --- HELPER: GENERATE DETAILED EMAIL WITH HISTORY ---
-const generatePaymentEmail = (doc, currentInstallment, index, link) => {
-    // 1. Calculate Financials
-    const totalFee = doc.fee_total;
-    const totalPayable = currentInstallment.amount;
-    const baseAmount = Math.round(totalPayable / (1 + GATEWAY_SURCHARGE_PERCENT));
-    const surcharge = totalPayable - baseAmount;
-    
-    const typeLabel = index === 0 ? "Initial Advance" : `Installment #${index}`;
-
-    // 2. Generate History Rows (Previous Paid Transactions)
-    // We map through all installments to find paid ones
-    let historyHtml = '';
-    let paidTotal = 0;
-
-    doc.installments.forEach((inst, idx) => {
-        if (inst.status === 'Paid') {
-            const label = idx === 0 ? "Initial Advance" : `Installment #${idx}`;
-            const date = inst.paid_at ? new Date(inst.paid_at).toLocaleDateString('en-IN') : 'Paid';
-            paidTotal += inst.amount;
-            
-            historyHtml += `
-                <tr>
-                    <td style="padding: 6px 0; color: #166534; font-size: 13px;">
-                        <span style="font-size: 14px;">✔</span> ${label} <span style="color: #94a3b8; font-size: 11px;">(${date})</span>
-                    </td>
-                    <td style="padding: 6px 0; text-align: right; color: #166534; font-weight: bold; font-size: 13px;">
-                        ₹${inst.amount}
-                    </td>
-                </tr>
-            `;
-        }
+// Initialize safely
+let razorpay;
+if (process.env.RAZORPAY_KEY_ID && process.env.RAZORPAY_KEY_SECRET) {
+    razorpay = new Razorpay({
+        key_id: process.env.RAZORPAY_KEY_ID,
+        key_secret: process.env.RAZORPAY_KEY_SECRET,
     });
+} else {
+    console.warn("⚠️ Razorpay keys are missing in environment variables. Payments will fail.");
+}
 
-    if (historyHtml === '') {
-        historyHtml = `<tr><td colspan="2" style="padding: 8px 0; color: #94a3b8; font-style: italic; text-align: center; font-size: 13px;">No previous payments recorded.</td></tr>`;
-    }
-
+const generatePaymentEmail = (doc, installment, index, link) => {
+    const totalFee = doc.fee_total;
+    const paidSoFar = doc.installments
+        .filter(i => i.status === 'Paid')
+        .reduce((sum, i) => sum + i.amount, 0);
+    
+    const futureRemaining = totalFee - (paidSoFar + installment.amount);
+    const typeLabel = index === 0 ? "Initial Advance" : `Installment #${index}`;
+    
     return `
         <div style="font-family: Arial, sans-serif; color: #333; max-width: 600px; margin: 0 auto; border: 1px solid #e2e8f0; border-radius: 8px; overflow: hidden;">
-            
-            <div style="background-color: #1e3a8a; padding: 25px; text-align: center;">
-                <h2 style="color: white; margin: 0; font-size: 24px;">Payment Request</h2>
-                <p style="color: #bfdbfe; margin: 5px 0 0; font-size: 14px; text-transform: uppercase; letter-spacing: 1px;">${typeLabel}</p>
+            <div style="background-color: #1e3a8a; padding: 20px; text-align: center;">
+                <h2 style="color: white; margin: 0;">Payment Request</h2>
             </div>
-
-            <div style="padding: 25px;">
-                <p style="margin-top: 0;">Hello,</p>
-                <p>Please complete the pending payment for your document (ID: <b>${doc.tracking_id}</b>).</p>
+            <div style="padding: 20px;">
+                <p>Hello,</p>
+                <p>A payment of <b>₹${installment.amount}</b> is required for your document (ID: <b>${doc.tracking_id}</b>).</p>
                 
-                <div style="background: #f0fdf4; padding: 15px; border-radius: 8px; border: 1px solid #bbf7d0; margin: 20px 0;">
-                    <h3 style="margin-top: 0; border-bottom: 1px solid #bbf7d0; padding-bottom: 8px; font-size: 14px; color: #166534; text-transform: uppercase;">Transaction History</h3>
-                    <table style="width: 100%; border-collapse: collapse;">
-                        ${historyHtml}
-                        <tr style="border-top: 1px dashed #bbf7d0;">
-                            <td style="padding-top: 8px; font-weight: bold; color: #14532d; font-size: 13px;">Total Paid So Far:</td>
-                            <td style="padding-top: 8px; text-align: right; font-weight: bold; color: #14532d; font-size: 13px;">₹${paidTotal}</td>
-                        </tr>
-                    </table>
-                </div>
-
                 <div style="background: #f8fafc; padding: 15px; border-radius: 8px; border: 1px solid #cbd5e1; margin: 20px 0;">
-                    <h3 style="margin-top: 0; border-bottom: 1px solid #cbd5e1; padding-bottom: 8px; font-size: 14px; color: #1e40af; text-transform: uppercase;">Current Invoice Breakdown</h3>
+                    <h3 style="margin-top: 0; border-bottom: 2px solid #e2e8f0; padding-bottom: 10px; font-size: 16px; color: #1e40af;">Financial Summary</h3>
                     <table style="width: 100%; border-collapse: collapse; font-size: 14px;">
                         <tr>
-                            <td style="padding: 6px 0; color: #64748b;">Processing Fee (Base):</td>
-                            <td style="padding: 6px 0; text-align: right; font-weight: bold;">₹${baseAmount}</td>
+                            <td style="padding: 8px 0; color: #64748b;">Total Estimated Fee:</td>
+                            <td style="padding: 8px 0; text-align: right; font-weight: bold;">₹${totalFee}</td>
                         </tr>
                         <tr>
-                            <td style="padding: 6px 0; color: #64748b;">Gateway Charges (3%):</td>
-                            <td style="padding: 6px 0; text-align: right; color: #dc2626;">+ ₹${surcharge}</td>
+                            <td style="padding: 8px 0; color: #166534;">Previously Paid:</td>
+                            <td style="padding: 8px 0; text-align: right; color: #166534;">- ₹${paidSoFar}</td>
                         </tr>
-                        <tr style="background-color: #eff6ff; border-top: 1px solid #cbd5e1;">
-                            <td style="padding: 12px 5px; color: #1d4ed8; font-weight: bold; font-size: 16px;">Total Payable Now:</td>
-                            <td style="padding: 12px 5px; text-align: right; color: #1d4ed8; font-weight: bold; font-size: 18px;">₹${totalPayable}</td>
+                        <tr style="background-color: #eff6ff; border-top: 1px dashed #cbd5e1; border-bottom: 1px dashed #cbd5e1;">
+                            <td style="padding: 10px; color: #1d4ed8; font-weight: bold;">Current Due (${typeLabel}):</td>
+                            <td style="padding: 10px; text-align: right; color: #1d4ed8; font-weight: bold; font-size: 16px;">₹${installment.amount}</td>
+                        </tr>
+                        <tr>
+                            <td style="padding: 8px 0; color: #94a3b8; font-style: italic;">Remaining Balance:</td>
+                            <td style="padding: 8px 0; text-align: right; color: #94a3b8; font-style: italic;">₹${futureRemaining}</td>
                         </tr>
                     </table>
                 </div>
 
-                <div style="text-align: center; margin-top: 30px; margin-bottom: 20px;">
-                    <a href="${link}" style="background-color: #2563eb; color: white; padding: 14px 28px; text-decoration: none; border-radius: 6px; font-weight: bold; font-size: 16px; display: inline-block; box-shadow: 0 4px 6px -1px rgba(37, 99, 235, 0.3);">
-                        Pay ₹${totalPayable} Securely
-                    </a>
+                <div style="text-align: center; margin-top: 30px; margin-bottom: 10px;">
+                    <a href="${link}" style="background-color: #2563eb; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; font-weight: bold; font-size: 16px; display: inline-block;">Pay ₹${installment.amount} Now</a>
                 </div>
-                
-                <p style="text-align: center; font-size: 12px; color: #94a3b8; line-height: 1.5;">
-                    This link is valid for <strong>SmartDoc Connect</strong> payments only.<br/>
-                    <a href="${link}" style="color: #2563eb;">${link}</a>
-                </p>
+                <p style="text-align: center; font-size: 11px; color: #94a3b8;">Secure payment powered by Razorpay.<br/>Link: ${link}</p>
             </div>
         </div>
     `;
 };
 
-// --- 1. GENERATE PAYMENT REQUEST ---
 exports.requestPayment = async (req, res) => {
     try {
+        if (!razorpay) return res.status(503).json({ error: "Payment gateway is not configured." });
         if (!['Main_Admin', 'Dept_Admin'].includes(req.user.role)) return res.status(403).json({ error: "Unauthorized" });
+        if (!isValidId(req.params.id)) return res.status(400).json({ error: "Invalid Document ID" });
 
         const { installments } = req.body; 
+        if (!Array.isArray(installments) || installments.length === 0) return res.status(400).json({ error: "Valid installments array required" });
+
         const doc = await Document.findById(req.params.id).populate('user');
-        
         if (!doc) return res.status(404).json({ error: "Document not found" });
         if (doc.fee_total > 0) return res.status(400).json({ error: "Fee already estimated." });
 
         const newInstallments = [];
-        let totalAmountStored = 0;
+        let totalAmount = 0;
 
         for (let i = 0; i < installments.length; i++) {
-            const baseAmt = Number(installments[i]);
+            const amt = Number(installments[i]);
+            if (isNaN(amt) || amt < 0) return res.status(400).json({ error: "Invalid installment amount detected" });
             
-            if (baseAmt > 0) {
-                // Add 3% Surcharge
-                const surcharge = Math.ceil(baseAmt * GATEWAY_SURCHARGE_PERCENT);
-                const finalAmount = baseAmt + surcharge;
-                totalAmountStored += finalAmount;
-
-                const options = { 
-                    amount: Math.round(finalAmount * 100), 
-                    currency: "INR", 
-                    receipt: `rcpt_${doc.tracking_id}_${i}` 
-                };
+            totalAmount += amt;
+            
+            if (amt > 0) {
+                const options = { amount: Math.round(amt * 100), currency: "INR", receipt: `rcpt_${doc.tracking_id}_${i}` };
                 const order = await razorpay.orders.create(options);
-                
-                newInstallments.push({ amount: finalAmount, razorpay_order_id: order.id, status: 'Pending' });
+                newInstallments.push({ amount: amt, razorpay_order_id: order.id, status: 'Pending' });
             } else {
                 newInstallments.push({ amount: 0, razorpay_order_id: "NA", status: 'Paid', paid_at: new Date() });
             }
         }
 
-        doc.fee_total = totalAmountStored;
-        doc.fee_status = totalAmountStored === 0 ? 'Not_Applicable' : 'Unpaid';
+        doc.fee_total = totalAmount;
+        doc.fee_status = totalAmount === 0 ? 'Not_Applicable' : 'Unpaid';
         doc.installments = newInstallments;
         
         await doc.save();
 
-        // Email only if Advance > 0
-        const firstInst = doc.installments[0];
-        if (firstInst.amount > 0) {
-            const link = `http://localhost:5173/pay/${doc._id}/${firstInst._id}`;
-            const emailHtml = generatePaymentEmail(doc, firstInst, 0, link);
+        if (doc.installments.length > 0 && doc.installments[0].amount > 0) {
+            const advanceInst = doc.installments[0];
+            const link = `${frontendUrl}/pay/${doc._id}/${advanceInst._id}`;
+            const emailHtml = generatePaymentEmail(doc, advanceInst, 0, link);
             sendMail(doc.user.email, "Action Required: Pay Advance Fee", emailHtml);
         }
 
         res.json({ status: 'Generated' });
     } catch (error) { 
-        console.error(error);
+        console.error("Request Payment Error:", error);
         res.status(500).json({ error: "Failed to generate payment" }); 
     }
 };
 
-// --- 2. SEND PAYMENT REMINDER ---
 exports.sendPaymentReminder = async (req, res) => {
     try {
         const { docId, installmentId } = req.params;
+        if (!isValidId(docId) || !isValidId(installmentId)) return res.status(400).json({ error: "Invalid IDs" });
+
         const doc = await Document.findById(docId).populate('user');
+        if (!doc) return res.status(404).json({ error: "Document not found" });
         
         const installment = doc.installments.id(installmentId);
-        if (installment.amount === 0 || installment.status === 'Paid') return res.status(400).json({ error: "Nothing to pay" });
+        if (!installment) return res.status(404).json({ error: "Installment not found" });
+        if (installment.amount === 0 || installment.status === 'Paid') return res.status(400).json({ error: "Nothing to pay or already paid" });
 
         const index = doc.installments.findIndex(i => i._id.toString() === installmentId);
-        const link = `http://localhost:5173/pay/${doc._id}/${installment._id}`;
+        const link = `${frontendUrl}/pay/${doc._id}/${installment._id}`;
         
         const emailHtml = generatePaymentEmail(doc, installment, index, link);
-        
         const typeLabel = index === 0 ? "Advance" : "Balance";
         await sendMail(doc.user.email, `Payment Reminder: ${typeLabel} Due`, emailHtml);
 
@@ -183,20 +141,30 @@ exports.sendPaymentReminder = async (req, res) => {
         await doc.save();
 
         res.json({ status: 'Reminder Sent' });
-    } catch (e) { res.status(500).json({ error: "Failed" }); }
+    } catch (e) { 
+        console.error("Send Reminder Error:", e);
+        res.status(500).json({ error: "Failed to send reminder" }); 
+    }
 };
 
-// --- 3. VERIFY PAYMENT ---
 exports.verifyPayment = async (req, res) => {
     try {
         const { doc_id, installment_id, razorpay_order_id, razorpay_payment_id, razorpay_signature } = req.body;
+        if (!doc_id || !installment_id || !razorpay_order_id || !razorpay_payment_id || !razorpay_signature) {
+            return res.status(400).json({ error: "Missing required payment parameters" });
+        }
+
         const body = razorpay_order_id + "|" + razorpay_payment_id;
         const expectedSignature = crypto.createHmac('sha256', process.env.RAZORPAY_KEY_SECRET).update(body.toString()).digest('hex');
 
-        if (expectedSignature !== razorpay_signature) return res.status(400).json({ error: "Invalid signature" });
+        if (expectedSignature !== razorpay_signature) return res.status(400).json({ error: "Invalid cryptographic signature" });
 
         const doc = await Document.findById(doc_id).populate('user');
+        if (!doc) return res.status(404).json({ error: "Document not found" });
+
         const installment = doc.installments.id(installment_id);
+        if (!installment) return res.status(404).json({ error: "Installment not found" });
+        if (installment.status === 'Paid') return res.status(400).json({ error: "Installment already marked as paid" });
         
         installment.status = 'Paid';
         installment.razorpay_payment_id = razorpay_payment_id;
@@ -206,10 +174,15 @@ exports.verifyPayment = async (req, res) => {
         doc.fee_status = allPaid ? 'Paid' : 'Partial';
         
         await doc.save();
-        await ActivityLog.create({ user: req.user ? req.user._id : doc.user._id, action: 'Paid', details: `Paid ₹${installment.amount}` });
+        
+        const payerId = req.user ? req.user._id : doc.user._id;
+        await ActivityLog.create({ user: payerId, action: 'Paid', details: `Paid ₹${installment.amount} via Razorpay` });
         
         res.json({ status: 'Verified' });
-    } catch (error) { res.status(500).json({ error: "Verification failed" }); }
+    } catch (error) { 
+        console.error("Verify Payment Error:", error);
+        res.status(500).json({ error: "Verification failed" }); 
+    }
 };
 
 exports.verifyPublicPayment = async (req, res) => { exports.verifyPayment(req, res); };

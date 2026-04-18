@@ -2,6 +2,7 @@ import React from 'react';
 import { useNavigate } from 'react-router-dom';
 import Navbar from '../components/Navbar';
 import Footer from '../components/Footer';
+import { APP_NAME, ROLES } from '../../constants';
 
 export default function Landing() {
   const navigate = useNavigate();
@@ -25,7 +26,7 @@ export default function Landing() {
             <span className="text-transparent bg-clip-text bg-gradient-to-r from-blue-400 to-emerald-400">Paperwork & Payments</span>
           </h1>
           <p className="text-xl text-blue-100/80 max-w-2xl mx-auto mb-10 leading-relaxed animate-fade-in-up" style={{ animationDelay: '0.2s' }}>
-            SmartDoc Connect automates document routing for colleges and large enterprises. 
+            {APP_NAME} automates document routing for colleges and large enterprises. 
             Securely upload, verify, and handle payments in one unified platform.
           </p>
 
@@ -34,7 +35,7 @@ export default function Landing() {
             
             {/* Client Card */}
             <div 
-              onClick={() => navigate('/signup', { state: { role: 'Client' } })}
+              onClick={() => navigate('/signup', { state: { role: ROLES.CLIENT } })}
               className="bg-white/10 backdrop-blur-md border border-white/20 p-8 rounded-2xl cursor-pointer hover:bg-white/20 transition-all duration-300 hover:-translate-y-2 hover:shadow-2xl group text-left"
             >
               <div className="bg-blue-500/20 w-12 h-12 rounded-lg flex items-center justify-center text-2xl mb-4 group-hover:scale-110 transition">👤</div>
@@ -71,7 +72,7 @@ export default function Landing() {
       {/* --- FEATURES SECTION --- */}
       <div className="py-20 px-6 max-w-7xl mx-auto">
         <div className="text-center mb-16">
-          <h2 className="text-3xl md:text-4xl font-extrabold text-gray-900 mb-4">Why SmartDoc Connect?</h2>
+          <h2 className="text-3xl md:text-4xl font-extrabold text-gray-900 mb-4">Why {APP_NAME}?</h2>
           <p className="text-gray-500 max-w-2xl mx-auto">
             Traditional paperwork is slow and error-prone. We built a digital highway for your documents with enterprise-grade security.
           </p>

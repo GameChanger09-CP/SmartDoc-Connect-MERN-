@@ -1,18 +1,25 @@
 const nodemailer = require('nodemailer');
 
-const transporter = nodemailer.createTransport({
-    host: process.env.MAIL_HOST,
-    port: process.env.MAIL_PORT || 587,
-    secure: process.env.MAIL_PORT == 465, 
-    auth: {
-        user: process.env.MAIL_USER,
-        pass: process.env.MAIL_PASS,
-    },
-});
-    
+// Initialize safely to prevent server crash if email is misconfigured
+let transporter;
+
+if (process.env.MAIL_HOST && process.env.MAIL_USER && process.env.MAIL_PASS) {
+    transporter = nodemailer.createTransport({
+        host: process.env.MAIL_HOST,
+        port: process.env.MAIL_PORT || 587,
+        secure: process.env.MAIL_PORT == 465, 
+        auth: {
+            user: process.env.MAIL_USER,
+            pass: process.env.MAIL_PASS,
+        },
+    });
+} else {
+    console.warn("⚠️ Mail configuration is missing. Emails will not be sent.");
+}
+   
 exports.sendMail = async (to, subject, text) => {
     try {
-        if (!to) return; // Skip if user has no email registered
+        if (!to || !transporter) return; 
         
         await transporter.sendMail({
             from: `"SmartDoc Connect" <${process.env.MAIL_USER}>`,

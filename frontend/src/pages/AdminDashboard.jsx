@@ -3,16 +3,7 @@ import api from '../api';
 import Navbar from '../components/Navbar';
 import ProfileModal from '../components/ProfileModal';
 import { BarChart, Bar, XAxis, Tooltip, ResponsiveContainer, Cell } from 'recharts';
-
-const formatIST = (dateString) => {
-    if (!dateString) return '-';
-    const date = new Date(dateString);
-    return date.toLocaleString('en-IN', {
-        timeZone: 'Asia/Kolkata',
-        day: '2-digit', month: 'short', year: 'numeric',
-        hour: '2-digit', minute: '2-digit', hour12: true
-    });
-};
+import { formatIST, getFileUrl, forceDownload, DOC_STATUS, ROLES } from '../../constants';
 
 export default function AdminDashboard() {
   const [docs, setDocs] = useState([]);
@@ -29,11 +20,10 @@ export default function AdminDashboard() {
   const [infoDoc, setInfoDoc] = useState(null); 
   const [paymentDoc, setPaymentDoc] = useState(null); 
   
-  // Index 0 = Advance, Index 1+ = Remaining
   const [installments, setInstallments] = useState([{ amount: '' }, { amount: '' }]); 
-  
-  const [newUser, setNewUser] = useState({ username: '', email: '', password: '', role: 'Client' });
+  const [newUser, setNewUser] = useState({ username: '', email: '', password: '', role: ROLES.CLIENT });
   const [actionNote, setActionNote] = useState("");
+  const [isProcessing, setIsProcessing] = useState(false);
 
   const [showUploadModal, setShowUploadModal] = useState(false);
   const [userQuery, setUserQuery] = useState("");
@@ -50,11 +40,11 @@ export default function AdminDashboard() {
         api.get('/api/users/stats'),
         api.get('/api/users/logs')
       ]);
-      setDocs(Array.isArray(dRes.data) ? dRes.data : dRes.data.results || []);
-      setUsers(Array.isArray(uRes.data) ? uRes.data : uRes.data.results || []);
-      setDepts(Array.isArray(depRes.data) ? depRes.data : depRes.data.results || []);
-      setDeptStats(statRes.data.deptStats || []);
-      setLogs(Array.isArray(lRes.data) ? lRes.data : lRes.data.results || []);
+      setDocs(Array.isArray(dRes?.data) ? dRes.data : []);
+      setUsers(Array.isArray(uRes?.data) ? uRes.data : []);
+      setDepts(Array.isArray(depRes?.data) ? depRes.data : []);
+      setDeptStats(statRes?.data?.deptStats || []);
+      setLogs(Array.isArray(lRes?.data) ? lRes.data : []);
     } catch (err) { console.error("Fetch error", err); }
   };
 
@@ -62,18 +52,18 @@ export default function AdminDashboard() {
 
   const countState = (status) => docs.filter(d => d.status === status).length;
   const chartData = [
-    { name: 'Pending', count: countState('Review_Required') + countState('Returned_To_Main'), fill: '#F59E0B' },     
-    { name: 'Active', count: countState('In_Progress') + countState('With_Faculty') + countState('Faculty_Reported') + countState('Dept_Reported'), fill: '#3B82F6' },        
-    { name: 'Done', count: countState('Completed'), fill: '#10B981' },       
-    { name: 'Blocked', count: countState('Declined') + countState('Frozen'), fill: '#EF4444' }           
+    { name: 'Pending', count: countState(DOC_STATUS.REVIEW_REQUIRED) + countState(DOC_STATUS.RETURNED_TO_MAIN), fill: '#F59E0B' },     
+    { name: 'Active', count: countState(DOC_STATUS.IN_PROGRESS) + countState(DOC_STATUS.WITH_FACULTY) + countState(DOC_STATUS.FACULTY_REPORTED) + countState(DOC_STATUS.DEPT_REPORTED), fill: '#3B82F6' },        
+    { name: 'Done', count: countState(DOC_STATUS.COMPLETED), fill: '#10B981' },       
+    { name: 'Blocked', count: countState(DOC_STATUS.DECLINED) + countState(DOC_STATUS.FROZEN), fill: '#EF4444' }            
   ];
 
   const filteredDocs = docs.filter(doc => {
       if (filterStatus === "All") return true;
-      if (filterStatus === "Action_Required") return ['Review_Required', 'Returned_To_Main', 'Dept_Reported'].includes(doc.status);
-      if (filterStatus === "In_Progress") return ['In_Progress', 'With_Faculty', 'Faculty_Reported'].includes(doc.status);
-      if (filterStatus === "Completed") return doc.status === 'Completed';
-      if (filterStatus === "Blocked") return ['Declined', 'Frozen'].includes(doc.status);
+      if (filterStatus === "Action_Required") return [DOC_STATUS.REVIEW_REQUIRED, DOC_STATUS.RETURNED_TO_MAIN, DOC_STATUS.DEPT_REPORTED].includes(doc.status);
+      if (filterStatus === "In_Progress") return [DOC_STATUS.IN_PROGRESS, DOC_STATUS.WITH_FACULTY, DOC_STATUS.FACULTY_REPORTED].includes(doc.status);
+      if (filterStatus === "Completed") return doc.status === DOC_STATUS.COMPLETED;
+      if (filterStatus === "Blocked") return [DOC_STATUS.DECLINED, DOC_STATUS.FROZEN].includes(doc.status);
       return true;
   });
 
@@ -84,7 +74,14 @@ export default function AdminDashboard() {
 
   const handleCreateUser = async (e) => {
     e.preventDefault();
-    try { await api.post('/api/users/', newUser); alert(`✅ User ${newUser.username} created!`); setNewUser({ username: '', email: '', password: '', role: 'Client' }); fetchData(); } catch (error) { alert("Failed."); }
+    setIsProcessing(true);
+    try { 
+        await api.post('/api/users/', newUser); 
+        alert(`✅ User ${newUser.username} created!`); 
+        setNewUser({ username: '', email: '', password: '', role: ROLES.CLIENT }); 
+        fetchData(); 
+    } catch (error) { alert(error.response?.data?.error || "Failed to create user."); }
+    finally { setIsProcessing(false); }
   };
 
   const toggleFreeze = async (id) => { try { await api.post(`/api/documents/${id}/freeze`); fetchData(); } catch (e) { alert("Freeze failed"); } };
@@ -97,13 +94,15 @@ export default function AdminDashboard() {
   
   const handleRouteSubmit = async (e) => {
     e.preventDefault();
+    setIsProcessing(true);
     try { 
         await api.post(`/api/documents/${routingDoc._id}/route_to`, { 
             department_id: e.target.dept.value,
             note: actionNote
         }); 
         alert("Routed Successfully!"); setRoutingDoc(null); setActionNote(""); fetchData(); 
-    } catch (error) { alert("Failed to route."); }
+    } catch (error) { alert(error.response?.data?.error || "Failed to route."); }
+    finally { setIsProcessing(false); }
   };
 
   const handleForwardToClient = async (id) => {
@@ -117,9 +116,16 @@ export default function AdminDashboard() {
 
   const handlePaymentRequest = async (e) => {
       e.preventDefault();
-      // Allow 0 for Advance
+      setIsProcessing(true);
       const amounts = installments.map(i => i.amount === '' ? 0 : Number(i.amount));
-      try { await api.post(`/api/documents/${paymentDoc._id}/request_payment`, { installments: amounts }); alert("Payment Structure Generated!"); setPaymentDoc(null); setInstallments([{ amount: '' }, { amount: '' }]); fetchData(); } catch (error) { alert("Failed."); }
+      try { 
+          await api.post(`/api/documents/${paymentDoc._id}/request_payment`, { installments: amounts }); 
+          alert("Payment Structure Generated!"); 
+          setPaymentDoc(null); 
+          setInstallments([{ amount: '' }, { amount: '' }]); 
+          fetchData(); 
+      } catch (error) { alert(error.response?.data?.error || "Failed to generate payment request."); }
+      finally { setIsProcessing(false); }
   };
 
   const handleSendReminder = async (docId, installmentId) => {
@@ -130,28 +136,13 @@ export default function AdminDashboard() {
       } catch(e) { alert("Failed to send reminder."); }
   };
 
-  const getFileUrl = (path) => path ? `http://127.0.0.1:8001/${path.replace(/\\/g, '/')}` : '#';
-
-  const handleForceDownload = (url, baseFilename) => {
-      const extension = url.split('.').pop().split(/\#|\?/)[0];
-      const filename = `${baseFilename}.${extension}`;
-      fetch(url).then(response => response.blob()).then(blob => {
-          const link = document.createElement("a");
-          link.href = URL.createObjectURL(blob);
-          link.download = filename;
-          document.body.appendChild(link);
-          link.click();
-          document.body.removeChild(link);
-      }).catch(() => window.open(url, '_blank'));
-  };
-
   const handleSearchUser = async (q) => {
       setUserQuery(q);
       if(q.length > 2) {
           try {
-              const res = await api.get(`/api/users/search?q=${q}`);
-              setSearchResults(res.data);
-          } catch(e) { console.error(e); }
+              const res = await api.get(`/api/users/search?q=${encodeURIComponent(q)}`);
+              setSearchResults(res.data || []);
+          } catch(e) { console.error(e); setSearchResults([]); }
       } else {
           setSearchResults([]);
       }
@@ -160,6 +151,7 @@ export default function AdminDashboard() {
   const handleAdminUpload = async (e) => {
       e.preventDefault();
       if(!selectedUser || !uploadFile) return alert("Select user and file");
+      setIsProcessing(true);
       const formData = new FormData();
       formData.append('file', uploadFile);
       formData.append('target_user_id', selectedUser._id);
@@ -170,7 +162,8 @@ export default function AdminDashboard() {
           setSelectedUser(null);
           setUploadFile(null);
           fetchData();
-      } catch (e) { alert("Upload Failed"); }
+      } catch (e) { alert(e.response?.data?.error || "Upload Failed"); }
+      finally { setIsProcessing(false); }
   };
 
   return (
@@ -195,7 +188,7 @@ export default function AdminDashboard() {
             <div className="space-y-8">
                 <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100"><h3 className="font-bold text-slate-800 mb-4">Traffic</h3><div className="h-48 w-full"><ResponsiveContainer width="100%" height="100%"><BarChart data={chartData}><XAxis dataKey="name" axisLine={false} tickLine={false} fontSize={10} /><Tooltip cursor={{fill: '#f3f4f6'}} contentStyle={{borderRadius:'8px'}} /><Bar dataKey="count" radius={[4,4,0,0]}>{chartData.map((e,i)=><Cell key={i} fill={e.fill}/>)}</Bar></BarChart></ResponsiveContainer></div></div>
                 <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100"><h3 className="font-bold text-slate-800 mb-4 border-b pb-2">Department Load</h3><div className="space-y-3">{deptStats.map((d, i) => (<div key={i} className="flex justify-between items-center text-sm"><span className="font-medium text-slate-600">{d.name}</span><span className="px-2 py-1 rounded-full text-xs font-bold bg-blue-100 text-blue-700">{d.count} Pending</span></div>))}{deptStats.length === 0 && <p className="text-xs text-slate-400 italic">All departments clear.</p>}</div></div>
-                <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100"><h3 className="font-bold text-slate-800 mb-4 border-b pb-2">Provision User</h3><form onSubmit={handleCreateUser} className="space-y-3"><input className="w-full border p-2 rounded text-xs" placeholder="Username" value={newUser.username} onChange={e => setNewUser({...newUser, username: e.target.value})} required /><input className="w-full border p-2 rounded text-xs" placeholder="Email" value={newUser.email} onChange={e => setNewUser({...newUser, email: e.target.value})} required /><input className="w-full border p-2 rounded text-xs" placeholder="Password" type="password" value={newUser.password} onChange={e => setNewUser({...newUser, password: e.target.value})} required /><select className="w-full border p-2 rounded text-xs" value={newUser.role} onChange={e => setNewUser({...newUser, role: e.target.value})}><option value="Client">Client</option><option value="Dept_Admin">Dept Admin</option></select><button className="w-full bg-slate-900 hover:bg-slate-800 text-white py-2 rounded font-bold text-xs transition">Create Account</button></form></div>
+                <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100"><h3 className="font-bold text-slate-800 mb-4 border-b pb-2">Provision User</h3><form onSubmit={handleCreateUser} className="space-y-3"><input className="w-full border p-2 rounded text-xs outline-none focus:border-blue-500" placeholder="Username" value={newUser.username} onChange={e => setNewUser({...newUser, username: e.target.value})} required /><input className="w-full border p-2 rounded text-xs outline-none focus:border-blue-500" placeholder="Email" type="email" value={newUser.email} onChange={e => setNewUser({...newUser, email: e.target.value})} required /><input className="w-full border p-2 rounded text-xs outline-none focus:border-blue-500" placeholder="Password" type="password" value={newUser.password} onChange={e => setNewUser({...newUser, password: e.target.value})} required /><select className="w-full border p-2 rounded text-xs outline-none focus:border-blue-500" value={newUser.role} onChange={e => setNewUser({...newUser, role: e.target.value})}><option value={ROLES.CLIENT}>Client</option><option value={ROLES.DEPT_ADMIN}>Dept Admin</option></select><button disabled={isProcessing} className="w-full bg-slate-900 hover:bg-slate-800 text-white py-2 rounded font-bold text-xs transition disabled:opacity-50">Create Account</button></form></div>
             </div>
 
             <div className="lg:col-span-2 space-y-8">
@@ -208,16 +201,16 @@ export default function AdminDashboard() {
                         <table className="w-full text-left text-sm">
                             <thead className="bg-slate-50 text-slate-500 uppercase text-xs sticky top-0"><tr><th className="p-4">Tracking ID</th><th className="p-4">Status & Fee</th><th className="p-4 text-center">Controls</th></tr></thead>
                             <tbody className="divide-y divide-slate-100">
-                                {filteredDocs.map(doc => (
+                                {filteredDocs.length === 0 ? <tr><td colSpan="3" className="text-center p-6 text-slate-400">No documents found.</td></tr> : filteredDocs.map(doc => (
                                     <tr key={doc._id} className="hover:bg-slate-50 transition">
                                         <td className="p-4">
                                             <a href={getFileUrl(doc.file)} target="_blank" rel="noopener noreferrer" className="font-mono text-blue-600 font-bold hover:underline">{doc.tracking_id}</a>
-                                            <div className="text-[10px] text-slate-400">Owner: {doc.client_username}</div>
-                                            {doc.dept_report && (<div className="flex gap-2 mt-1"><a href={getFileUrl(doc.dept_report)} target="_blank" rel="noopener noreferrer" className="text-[10px] bg-purple-50 text-purple-700 px-2 py-0.5 rounded border border-purple-200 font-bold hover:bg-purple-100 transition">View</a><button onClick={() => handleForceDownload(getFileUrl(doc.dept_report), `${doc.tracking_id}_final`)} className="text-[10px] bg-green-50 text-green-700 px-2 py-0.5 rounded border border-green-200 font-bold hover:bg-green-100 transition cursor-pointer">Download</button></div>)}
+                                            <div className="text-[10px] text-slate-400">Owner: {doc.client_username || 'Unknown'}</div>
+                                            {doc.dept_report && (<div className="flex gap-2 mt-1"><a href={getFileUrl(doc.dept_report)} target="_blank" rel="noopener noreferrer" className="text-[10px] bg-purple-50 text-purple-700 px-2 py-0.5 rounded border border-purple-200 font-bold hover:bg-purple-100 transition">View</a><button onClick={() => forceDownload(getFileUrl(doc.dept_report), `${doc.tracking_id}_final`)} className="text-[10px] bg-green-50 text-green-700 px-2 py-0.5 rounded border border-green-200 font-bold hover:bg-green-100 transition cursor-pointer">Download</button></div>)}
                                         </td>
                                         <td className="p-4">
                                             <div className="flex flex-col gap-1 items-start">
-                                                <span className={`px-2 py-1 rounded text-[10px] font-bold uppercase border ${doc.status === 'Completed' ? 'bg-green-50 text-green-700 border-green-200' : doc.status === 'Declined' ? 'bg-slate-200 text-slate-600 border-slate-300' : 'bg-yellow-50 text-yellow-700 border-yellow-200'}`}>{doc.status.replace(/_/g, ' ')}</span>
+                                                <span className={`px-2 py-1 rounded text-[10px] font-bold uppercase border ${doc.status === DOC_STATUS.COMPLETED ? 'bg-green-50 text-green-700 border-green-200' : doc.status === DOC_STATUS.DECLINED ? 'bg-slate-200 text-slate-600 border-slate-300' : 'bg-yellow-50 text-yellow-700 border-yellow-200'}`}>{doc.status?.replace(/_/g, ' ')}</span>
                                                 {doc.fee_total > 0 && <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded border ${doc.fee_status === 'Paid' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>Fee: {doc.fee_status}</span>}
                                             </div>
                                         </td>
@@ -245,7 +238,7 @@ export default function AdminDashboard() {
                         <button onClick={() => setShowHistory(false)} className="text-slate-500 hover:text-red-600 text-xl font-bold leading-none">×</button>
                     </div>
                     <div className="p-3 border-b"><input type="text" placeholder="Search logs..." value={logSearch} onChange={(e) => setLogSearch(e.target.value)} className="w-full text-xs p-2 border rounded focus:outline-none focus:ring-2 focus:ring-blue-500" /></div>
-                    <div className="flex-1 overflow-y-auto p-3 space-y-2">{logs.filter(l => l.action.toLowerCase().includes(logSearch.toLowerCase())).map(log => (<div key={log._id} className="text-xs p-2 bg-slate-50 border-l-2 border-blue-500 rounded"><span className="font-bold block text-blue-700">{log.user_username}</span><span className="block font-semibold">{log.action}</span><span className="text-[9px] text-slate-400">{formatIST(log.timestamp)}</span></div>))}</div>
+                    <div className="flex-1 overflow-y-auto p-3 space-y-2">{logs.filter(l => l.action?.toLowerCase().includes(logSearch.toLowerCase())).map(log => (<div key={log._id} className="text-xs p-2 bg-slate-50 border-l-2 border-blue-500 rounded"><span className="font-bold block text-blue-700">{log.user_username || 'System'}</span><span className="block font-semibold">{log.action}</span><span className="text-[9px] text-slate-400">{formatIST(log.timestamp)}</span></div>))}</div>
                 </div>
             )}
         </div>
@@ -253,18 +246,34 @@ export default function AdminDashboard() {
 
       {/* --- MODALS --- */}
       {viewUserHistory && <ProfileModal targetUser={viewUserHistory} onClose={() => setViewUserHistory(null)} />}
-      {routingDoc && (/* ... Routing Modal ... */ <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 backdrop-blur-sm"><div className="bg-white p-8 rounded-xl shadow-2xl w-96 animate-scale-in"><h3 className="text-xl font-bold mb-4">Route Document</h3><form onSubmit={handleRouteSubmit}><select name="dept" className="w-full border p-3 rounded-lg mb-4 bg-slate-50" required><option value="">-- Choose Department --</option>{depts.map(d => (<option key={d._id} value={d._id}>{d.name}</option>))}</select><textarea className="w-full border p-3 rounded-lg mb-6 bg-slate-50 text-sm h-24 resize-none focus:ring-2 focus:ring-blue-500 outline-none" placeholder="Add remarks for Dept Admin..." value={actionNote} onChange={(e) => setActionNote(e.target.value)}></textarea><div className="flex gap-3 justify-end"><button type="button" onClick={() => setRoutingDoc(null)} className="px-4 py-2 text-slate-600 font-bold">Cancel</button><button type="submit" className="px-4 py-2 bg-blue-600 text-white font-bold rounded-lg shadow">Confirm Route</button></div></form></div></div>)}
       
-      {/* 🔥 PAYMENT GENERATION MODAL (Updated Labels) 🔥 */}
+      {routingDoc && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 backdrop-blur-sm p-4">
+            <div className="bg-white p-8 rounded-xl shadow-2xl w-full max-w-sm animate-scale-in">
+                <h3 className="text-xl font-bold mb-4">Route Document</h3>
+                <form onSubmit={handleRouteSubmit}>
+                    <select name="dept" className="w-full border p-3 rounded-lg mb-4 bg-slate-50 outline-none focus:ring-2 focus:ring-blue-500" required>
+                        <option value="">-- Choose Department --</option>
+                        {depts.map(d => (<option key={d._id} value={d._id}>{d.name}</option>))}
+                    </select>
+                    <textarea className="w-full border p-3 rounded-lg mb-6 bg-slate-50 text-sm h-24 resize-none focus:ring-2 focus:ring-blue-500 outline-none" placeholder="Add remarks for Dept Admin..." value={actionNote} onChange={(e) => setActionNote(e.target.value)}></textarea>
+                    <div className="flex gap-3 justify-end">
+                        <button type="button" onClick={() => setRoutingDoc(null)} className="px-4 py-2 text-slate-600 font-bold">Cancel</button>
+                        <button type="submit" disabled={isProcessing} className="px-4 py-2 bg-blue-600 text-white font-bold rounded-lg shadow disabled:opacity-50">Confirm Route</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+      )}
+      
       {paymentDoc && (
-        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 backdrop-blur-sm">
-            <div className="bg-white p-8 rounded-xl shadow-2xl w-[400px] animate-scale-in max-h-[90vh] overflow-y-auto">
+        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 backdrop-blur-sm p-4">
+            <div className="bg-white p-8 rounded-xl shadow-2xl w-full max-w-md animate-scale-in max-h-[90vh] overflow-y-auto">
                 <h3 className="text-xl font-bold mb-4 text-slate-800 border-b pb-2">Generate Fee Structure</h3>
                 <form onSubmit={handlePaymentRequest}>
                     <div className="space-y-4 mb-6">
                         {installments.map((inst, index) => (
                             <div key={index} className="flex flex-col gap-1">
-                                {/* LABEL LOGIC: Index 0 is Advance, others are Installments */}
                                 <label className={`block text-xs font-bold uppercase mb-1 ${index===0 ? 'text-blue-600' : 'text-slate-500'}`}>
                                     {index === 0 ? '✨ Advance Amount (Paid Now)' : `Future Installment #${index} (Paid Later)`}
                                 </label>
@@ -284,29 +293,82 @@ export default function AdminDashboard() {
                         ))}
                     </div>
                     <button type="button" onClick={handleAddInstallment} className="text-xs font-bold text-slate-600 border border-slate-300 px-3 py-2 rounded-lg hover:bg-slate-50 transition w-full mb-6 border-dashed">+ Add Another Future Installment</button>
-                    <div className="flex gap-3 justify-end pt-4 border-t border-slate-100"><button type="button" onClick={() => setPaymentDoc(null)} className="px-4 py-2 text-slate-600 font-bold hover:bg-slate-100 rounded-lg">Cancel</button><button type="submit" className="px-4 py-2 bg-green-600 text-white font-bold rounded-lg shadow hover:bg-green-700">Create Plan</button></div>
+                    <div className="flex gap-3 justify-end pt-4 border-t border-slate-100">
+                        <button type="button" onClick={() => setPaymentDoc(null)} className="px-4 py-2 text-slate-600 font-bold hover:bg-slate-100 rounded-lg">Cancel</button>
+                        <button type="submit" disabled={isProcessing} className="px-4 py-2 bg-green-600 text-white font-bold rounded-lg shadow hover:bg-green-700 disabled:opacity-50">Create Plan</button>
+                    </div>
                 </form>
             </div>
         </div>
       )}
 
-      {showUploadModal && (/* ... Upload Modal ... */ <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 backdrop-blur-sm"><div className="bg-white p-8 rounded-xl shadow-2xl w-96 animate-scale-in"><h3 className="text-xl font-bold mb-4">Offline Document Upload</h3>{!selectedUser ? (<div className="mb-4 relative"><label className="block text-xs font-bold mb-1">Find Client (Name/Email)</label><input className="w-full border p-2 rounded" value={userQuery} onChange={e => handleSearchUser(e.target.value)} placeholder="Type to search..." />{searchResults.length > 0 && (<div className="absolute w-full bg-white border shadow-lg mt-1 max-h-40 overflow-y-auto z-10 rounded">{searchResults.map(u => (<div key={u._id} onClick={() => { setSelectedUser(u); setSearchResults([]); }} className="p-2 hover:bg-blue-50 cursor-pointer text-sm">{u.username} <span className="text-gray-400 text-xs">({u.email})</span></div>))}</div>)}<div className="mt-2 text-center text-xs text-gray-500">User not found? Create them in 'Provision User' first.</div></div>) : (<div className="mb-4 bg-blue-50 p-3 rounded flex justify-between items-center"><span className="font-bold text-blue-800 text-sm">{selectedUser.username}</span><button onClick={() => setSelectedUser(null)} className="text-red-500 text-xs font-bold">Change</button></div>)}<form onSubmit={handleAdminUpload}><input type="file" required className="w-full mb-4 text-sm" onChange={e => setUploadFile(e.target.files[0])} /><div className="flex gap-3 justify-end"><button type="button" onClick={() => setShowUploadModal(false)} className="px-4 py-2 text-slate-600 font-bold">Cancel</button><button disabled={!selectedUser} className="px-4 py-2 bg-blue-600 text-white font-bold rounded-lg shadow disabled:opacity-50">Upload</button></div></form></div></div>)}
+      {showUploadModal && (
+          <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 backdrop-blur-sm p-4">
+              <div className="bg-white p-8 rounded-xl shadow-2xl w-full max-w-md animate-scale-in">
+                  <h3 className="text-xl font-bold mb-4">Offline Document Upload</h3>
+                  {!selectedUser ? (
+                      <div className="mb-4 relative">
+                          <label className="block text-xs font-bold mb-1">Find Client (Name/Email)</label>
+                          <input className="w-full border p-2 rounded outline-none focus:ring-2 focus:ring-blue-500" value={userQuery} onChange={e => handleSearchUser(e.target.value)} placeholder="Type to search..." />
+                          {searchResults.length > 0 && (
+                              <div className="absolute w-full bg-white border shadow-lg mt-1 max-h-40 overflow-y-auto z-10 rounded">
+                                  {searchResults.map(u => (
+                                      <div key={u._id} onClick={() => { setSelectedUser(u); setSearchResults([]); }} className="p-2 hover:bg-blue-50 cursor-pointer text-sm">
+                                          {u.username} <span className="text-gray-400 text-xs">({u.email})</span>
+                                      </div>
+                                  ))}
+                              </div>
+                          )}
+                          <div className="mt-2 text-center text-xs text-gray-500">User not found? Create them in 'Provision User' first.</div>
+                      </div>
+                  ) : (
+                      <div className="mb-4 bg-blue-50 p-3 rounded flex justify-between items-center border border-blue-100">
+                          <span className="font-bold text-blue-800 text-sm">{selectedUser.username}</span>
+                          <button onClick={() => setSelectedUser(null)} className="text-red-500 text-xs font-bold hover:underline">Change</button>
+                      </div>
+                  )}
+                  <form onSubmit={handleAdminUpload}>
+                      <input type="file" required className="w-full mb-4 text-sm file:bg-blue-50 file:border-0 file:rounded file:px-3 file:py-1 file:text-blue-700" onChange={e => setUploadFile(e.target.files[0])} />
+                      <div className="flex gap-3 justify-end">
+                          <button type="button" onClick={() => setShowUploadModal(false)} className="px-4 py-2 text-slate-600 font-bold">Cancel</button>
+                          <button disabled={!selectedUser || isProcessing} className="px-4 py-2 bg-blue-600 text-white font-bold rounded-lg shadow disabled:opacity-50">Upload</button>
+                      </div>
+                  </form>
+              </div>
+          </div>
+      )}
       
-      {/* 🔥 INFO MODAL WITH PAYMENT SUMMARY 🔥 */}
       {infoDoc && (
           <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 backdrop-blur-sm p-4">
-              <div className="bg-white p-6 rounded-xl w-[500px] shadow-2xl animate-scale-in">
+              <div className="bg-white p-6 rounded-xl w-full max-w-lg shadow-2xl animate-scale-in">
                   <div className="flex justify-between items-center mb-4 border-b pb-2"><h3 className="text-lg font-bold">Document Lifecycle</h3><button onClick={() => setInfoDoc(null)} className="text-xl font-bold text-slate-400 hover:text-red-500">&times;</button></div>
-                  <div className="mb-4 bg-slate-50 p-3 rounded-lg border border-slate-200 max-h-40 overflow-y-auto"><p className="text-xs font-bold text-slate-400 uppercase mb-2">Communication Log</p>{infoDoc.notes && infoDoc.notes.length > 0 ? infoDoc.notes.map((n, i) => (<div key={i} className="text-xs border-b border-slate-200 pb-2 mb-2 last:border-0"><span className="font-bold text-blue-700">{n.sender} ({n.role}): </span><span className="text-slate-700">{n.message}</span><div className="text-[9px] text-slate-400 mt-0.5">{formatIST(n.timestamp)}</div></div>)) : <p className="text-xs text-slate-400 italic">No notes available.</p>}</div>
+                  <div className="mb-4 bg-slate-50 p-3 rounded-lg border border-slate-200 max-h-40 overflow-y-auto">
+                      <p className="text-xs font-bold text-slate-400 uppercase mb-2">Communication Log</p>
+                      {infoDoc.notes && infoDoc.notes.length > 0 ? infoDoc.notes.map((n, i) => (
+                          <div key={i} className="text-xs border-b border-slate-200 pb-2 mb-2 last:border-0">
+                              <span className="font-bold text-blue-700">{n.sender} ({n.role}): </span>
+                              <span className="text-slate-700">{n.message}</span>
+                              <div className="text-[9px] text-slate-400 mt-0.5">{formatIST(n.timestamp)}</div>
+                          </div>
+                      )) : <p className="text-xs text-slate-400 italic">No notes available.</p>}
+                  </div>
                   <div className="space-y-4 text-sm">
                       <div className="bg-blue-50 p-3 rounded-lg border border-blue-100 flex justify-between"><div><p className="text-xs font-bold text-blue-800 uppercase">ID</p><p className="font-mono text-lg font-bold text-blue-900">{infoDoc.tracking_id}</p></div><div className="text-right"><p className="text-xs font-bold text-blue-800 uppercase">Fee</p><p className="font-bold">{infoDoc.fee_status}</p></div></div>
-                      <div className="bg-slate-50 p-4 rounded-lg border border-slate-200 space-y-3"><h4 className="text-xs font-bold text-slate-500 uppercase border-b pb-2">Timeline Events</h4><div className="flex justify-between"><span className="text-slate-600">Uploaded:</span><span className="font-mono">{formatIST(infoDoc.uploaded_at)}</span></div><div className="flex justify-between"><span className="text-slate-600">Sent to Dept:</span><span className="font-mono">{infoDoc.sent_to_dept_at ? formatIST(infoDoc.sent_to_dept_at) : '-'}</span></div><div className="flex justify-between pl-4 border-l-2 border-yellow-200"><span className="text-slate-600">↳ Faculty Assigned:</span><span className="font-mono text-xs">{infoDoc.assigned_to_faculty_at ? formatIST(infoDoc.assigned_to_faculty_at) : '-'}</span></div><div className="flex justify-between pl-4 border-l-2 border-purple-200"><span className="text-slate-600">↳ Faculty Reported:</span><span className="font-mono text-xs">{infoDoc.faculty_processed_at ? formatIST(infoDoc.faculty_processed_at) : '-'}</span></div><div className="flex justify-between"><span className="text-slate-600">Dept Approved:</span><span className="font-mono">{infoDoc.dept_processed_at ? formatIST(infoDoc.dept_processed_at) : '-'}</span></div><div className="flex justify-between border-t pt-2 mt-2"><span className="text-slate-800 font-bold">Completed:</span><span className="font-mono font-bold text-green-600">{infoDoc.final_report_sent_at ? formatIST(infoDoc.final_report_sent_at) : '-'}</span></div></div>
+                      <div className="bg-slate-50 p-4 rounded-lg border border-slate-200 space-y-3">
+                          <h4 className="text-xs font-bold text-slate-500 uppercase border-b pb-2">Timeline Events</h4>
+                          <div className="flex justify-between"><span className="text-slate-600">Uploaded:</span><span className="font-mono">{formatIST(infoDoc.uploaded_at)}</span></div>
+                          <div className="flex justify-between"><span className="text-slate-600">Sent to Dept:</span><span className="font-mono">{infoDoc.sent_to_dept_at ? formatIST(infoDoc.sent_to_dept_at) : '-'}</span></div>
+                          <div className="flex justify-between pl-4 border-l-2 border-yellow-200"><span className="text-slate-600">↳ Faculty Assigned:</span><span className="font-mono text-xs">{infoDoc.assigned_to_faculty_at ? formatIST(infoDoc.assigned_to_faculty_at) : '-'}</span></div>
+                          <div className="flex justify-between pl-4 border-l-2 border-purple-200"><span className="text-slate-600">↳ Faculty Reported:</span><span className="font-mono text-xs">{infoDoc.faculty_processed_at ? formatIST(infoDoc.faculty_processed_at) : '-'}</span></div>
+                          <div className="flex justify-between"><span className="text-slate-600">Dept Approved:</span><span className="font-mono">{infoDoc.dept_processed_at ? formatIST(infoDoc.dept_processed_at) : '-'}</span></div>
+                          <div className="flex justify-between border-t pt-2 mt-2"><span className="text-slate-800 font-bold">Completed:</span><span className="font-mono font-bold text-green-600">{infoDoc.final_report_sent_at ? formatIST(infoDoc.final_report_sent_at) : '-'}</span></div>
+                      </div>
                       
                       {infoDoc.fee_total > 0 && (
                           <div className="bg-blue-50/50 p-3 rounded-lg border border-blue-100">
                               <span className="text-xs font-bold text-blue-800 uppercase block mb-2">Financial Lifecycle (₹{infoDoc.fee_total})</span>
-                              {infoDoc.installments.map((inst, idx) => (
-                                  <div key={inst._id} className="flex justify-between items-center text-xs mt-1 border-b border-blue-100 pb-1">
+                              {infoDoc.installments?.map((inst, idx) => (
+                                  <div key={inst._id} className="flex justify-between items-center text-xs mt-1 border-b border-blue-100 pb-1 last:border-0">
                                       <span className="text-slate-600">↳ {idx===0 ? "Advance" : "Balance"} (₹{inst.amount}):</span>
                                       <div className="flex items-center gap-2">
                                           <span className={inst.status==='Paid'?"text-green-600 font-bold":"text-red-500 font-bold"}>{inst.status === 'Paid' ? 'Paid' : inst.amount === 0 ? 'N/A' : 'Pending'}</span>
@@ -317,8 +379,8 @@ export default function AdminDashboard() {
                           </div>
                       )}
                       
-                      {infoDoc.dept_report && (<div className="mt-4 flex gap-2"><a href={getFileUrl(infoDoc.dept_report)} target="_blank" rel="noopener noreferrer" className="flex-1 block text-center bg-purple-600 text-white py-2 rounded font-bold hover:bg-purple-700">View Report</a><button onClick={() => handleForceDownload(getFileUrl(infoDoc.dept_report), `${infoDoc.tracking_id}_report`)} className="flex-1 block text-center bg-green-600 text-white py-2 rounded font-bold hover:bg-green-700">Download Report</button></div>)}
-                      {infoDoc.status === 'Dept_Reported' && (<button onClick={() => handleForwardToClient(infoDoc._id)} className="w-full bg-green-600 text-white py-3 rounded-lg font-bold shadow hover:bg-green-700 mt-2">Forward Final Report to Client</button>)}
+                      {infoDoc.dept_report && (<div className="mt-4 flex gap-2"><a href={getFileUrl(infoDoc.dept_report)} target="_blank" rel="noopener noreferrer" className="flex-1 block text-center bg-purple-600 text-white py-2 rounded font-bold hover:bg-purple-700">View Report</a><button onClick={() => forceDownload(getFileUrl(infoDoc.dept_report), `${infoDoc.tracking_id}_report`)} className="flex-1 block text-center bg-green-600 text-white py-2 rounded font-bold hover:bg-green-700">Download Report</button></div>)}
+                      {infoDoc.status === DOC_STATUS.DEPT_REPORTED && (<button onClick={() => handleForwardToClient(infoDoc._id)} className="w-full bg-green-600 text-white py-3 rounded-lg font-bold shadow hover:bg-green-700 mt-2">Forward Final Report to Client</button>)}
                       <button onClick={() => setInfoDoc(null)} className="w-full bg-slate-100 py-2 rounded-lg font-bold hover:bg-slate-200 mt-2">Close</button>
                   </div>
               </div>

@@ -1,10 +1,14 @@
 const { GoogleGenerativeAI } = require("@google/generative-ai");
 const { GoogleAIFileManager } = require("@google/generative-ai/server");
 
-// Wait to initialize until called so dotenv has time to load
 let genAI, fileManager;
 
 exports.analyzeDocumentWithGemini = async (filePath, departmentNames) => {
+    if (!process.env.GEMINI_API_KEY) {
+        console.warn("⚠️ GEMINI_API_KEY is not defined. Skipping AI Analysis.");
+        return null;
+    }
+
     if (!genAI) {
         genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
         fileManager = new GoogleAIFileManager(process.env.GEMINI_API_KEY);
@@ -14,8 +18,9 @@ exports.analyzeDocumentWithGemini = async (filePath, departmentNames) => {
         console.log(`📤 Uploading to Gemini: ${filePath}...`);
         
         const uploadResult = await fileManager.uploadFile(filePath, { mimeType: "application/pdf" });
+        const model = genAI.getGenerativeModel({ model: "gemini-flash-latest" });        
         
-        const model = genAI.getGenerativeModel({ model: "gemini-flash-latest" });        const prompt = `
+        const prompt = `
         You are a Document Sorting AI.
         Here is a list of valid departments: ${departmentNames.join(', ')}.
         Look at this document. Determine which department it belongs to.
