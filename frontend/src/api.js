@@ -1,14 +1,16 @@
 import axios from 'axios';
-import { API_BASE_URL } from '../constants';
 
-const api = axios.create({
-    baseURL: API_BASE_URL,
-});
+// Initialize without a static baseURL
+const api = axios.create();
 
-// Request Interceptor: Attach Token
+// Request Interceptor: Attach Token & Handle Dynamic Routing
 api.interceptors.request.use((config) => {
+    // Dynamically adapt baseURL to Render's deployment environment or local dev
+    config.baseURL = import.meta.env.VITE_API_URL || window.location.origin;
+    
     const token = localStorage.getItem('token');
     if (token) config.headers.Authorization = `Token ${token}`;
+    
     return config;
 }, (error) => Promise.reject(error));
 

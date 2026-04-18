@@ -1,5 +1,6 @@
 // Environment and API Configuration
-export const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000';
+// Dynamically detects the domain (e.g., https://your-app.onrender.com or http://localhost:5173)
+export const API_BASE_URL = import.meta.env.VITE_API_URL || window.location.origin;
 export const RAZORPAY_SCRIPT_URL = 'https://checkout.razorpay.com/v1/checkout.js';
 
 // Application Details
@@ -33,7 +34,7 @@ export const DOC_STATUS = {
 export const formatIST = (dateString) => {
     if (!dateString) return '-';
     const date = new Date(dateString);
-    if (isNaN(date.getTime())) return '-'; // Prevent Invalid Date crash
+    if (isNaN(date.getTime())) return '-'; 
     return date.toLocaleString('en-IN', {
         timeZone: 'Asia/Kolkata',
         day: '2-digit', month: 'short', year: 'numeric',
@@ -41,7 +42,7 @@ export const formatIST = (dateString) => {
     });
 };
 
-// Centralized File URL Generator
+// Centralized File URL Generator (Now perfectly dynamic for Render)
 export const getFileUrl = (path) => {
     if (!path) return '#';
     const cleanPath = path.replace(/\\/g, '/');
@@ -80,7 +81,7 @@ export const forceDownload = (url, baseFilename) => {
             document.body.appendChild(link);
             link.click();
             document.body.removeChild(link);
-            URL.revokeObjectURL(objectUrl); // Clean up memory
+            URL.revokeObjectURL(objectUrl); 
         })
         .catch((err) => {
             console.error("Download failed, opening in new tab:", err);
