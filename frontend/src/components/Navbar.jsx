@@ -16,6 +16,17 @@ export default function Navbar() {
     navigate('/');
   };
 
+  // --- NEW: Helper function to route the user to their correct dashboard ---
+  const getDashboardPath = () => {
+    switch (role) {
+      case ROLES.MAIN_ADMIN: return '/admin';
+      case ROLES.DEPT_ADMIN: return '/dept';
+      case ROLES.FACULTY: return '/faculty';
+      case ROLES.CLIENT: return '/client';
+      default: return '/';
+    }
+  };
+
   const roleStyles = {
     [ROLES.MAIN_ADMIN]: 'bg-red-50 text-red-600 border-red-200',
     [ROLES.DEPT_ADMIN]: 'bg-orange-50 text-orange-600 border-orange-200',
@@ -37,6 +48,13 @@ export default function Navbar() {
               <div className="navbar-links">
                 <Link to="/" className="navbar-link">Home</Link>
                 <Link to="/about" className="navbar-link">About Us</Link>
+                
+                {/* --- NEW: Main Navbar Dashboard Link (Visible only when logged in) --- */}
+                {username && (
+                  <Link to={getDashboardPath()} className="navbar-link font-bold text-blue-300">
+                    Dashboard
+                  </Link>
+                )}
               </div>
             </div>
 
@@ -61,6 +79,16 @@ export default function Navbar() {
                         <p className="profile-username">{username}</p>
                         <p className="profile-status">Online</p>
                       </div>
+                      
+                      {/* --- NEW: Dropdown Dashboard Link (Great for mobile users) --- */}
+                      <Link 
+                        to={getDashboardPath()} 
+                        onClick={() => setIsProfileOpen(false)}
+                        className="dropdown-item block font-bold text-blue-600 bg-blue-50/50"
+                      >
+                        My Dashboard
+                      </Link>
+
                       <button
                         onClick={() => {
                           setShowModal(true);

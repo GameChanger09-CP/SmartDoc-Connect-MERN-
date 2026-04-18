@@ -5,6 +5,7 @@ import { formatIST, getFileUrl, forceDownload, loadRazorpay, DOC_STATUS } from '
 
 export default function ClientDashboard() {
   const [file, setFile] = useState(null);
+  const [previewUrl, setPreviewUrl] = useState(null); // Added for document preview
   const [docs, setDocs] = useState([]);
   const [filterStatus, setFilterStatus] = useState("All"); 
   const [infoDoc, setInfoDoc] = useState(null); 
@@ -43,16 +44,31 @@ export default function ClientDashboard() {
       return true;
   });
 
-  const handleUpload = async (e) => {
-    e.preventDefault();
+  // --- NEW: Handle File Selection for Preview ---
+  const handleFileSelect = (e) => {
+      const selectedFile = e.target.files[0];
+      if (selectedFile) {
+          setFile(selectedFile);
+          setPreviewUrl(URL.createObjectURL(selectedFile));
+      }
+  };
+
+  // --- NEW: Cancel Upload & Clear Preview ---
+  const cancelUpload = () => {
+      setFile(null);
+      setPreviewUrl(null);
+      document.getElementById('client-file-upload').value = '';
+  };
+
+  // --- MODIFIED: Confirm and Upload ---
+  const confirmUpload = async () => {
     if(!file) return alert("Please select a file to upload.");
     setIsUploading(true);
     const formData = new FormData(); formData.append('file', file);
     try { 
         await api.post('/api/documents/', formData); 
         fetchDocs(); 
-        setFile(null);
-        e.target.reset(); // Clear input
+        cancelUpload(); // Reset state after success
         alert('Document uploaded successfully!'); 
     } 
     catch (error) { alert(error.response?.data?.error || "Upload Failed."); }
@@ -102,12 +118,15 @@ export default function ClientDashboard() {
         <div className="bg-white p-8 rounded-2xl shadow-sm border border-slate-200 mb-10 flex flex-col md:flex-row items-center gap-6 animate-fade-in-up">
             <div className="p-4 bg-blue-50 text-blue-600 rounded-full text-3xl">📄</div>
             <div className="flex-grow"><h3 className="text-lg font-bold">New Application</h3><p className="text-sm text-slate-500">Upload PDF documents.</p></div>
-            <form onSubmit={handleUpload} className="flex gap-3">
-                <input type="file" required onChange={e => setFile(e.target.files[0])} className="text-sm file:bg-blue-50 file:text-blue-700 file:border-0 file:rounded-full file:px-4 file:py-2 hover:file:bg-blue-100 transition cursor-pointer" />
-                <button disabled={isUploading || !file} className="bg-blue-600 text-white px-6 py-2 rounded-lg font-bold shadow disabled:opacity-50 transition hover:bg-blue-700">
-                    {isUploading ? 'Uploading...' : 'Upload'}
-                </button>
-            </form>
+            <div className="flex gap-3">
+                <input 
+                    type="file" 
+                    id="client-file-upload"
+                    accept="application/pdf,image/jpeg,image/png" 
+                    onChange={handleFileSelect} 
+                    className="text-sm file:bg-blue-50 file:text-blue-700 file:border-0 file:rounded-full file:px-4 file:py-2 hover:file:bg-blue-100 transition cursor-pointer" 
+                />
+            </div>
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
@@ -116,7 +135,10 @@ export default function ClientDashboard() {
                     <div className={`absolute top-0 left-0 w-1 h-full ${doc.status === DOC_STATUS.COMPLETED ? 'bg-green-500' : 'bg-blue-500'}`}></div>
                     
                     <div className="flex justify-between items-start mb-4">
-                        <span className="font-mono text-xs font-bold text-slate-400 uppercase">{doc.tracking_id}</span>
+                        {/* MODIFIED: Clickable Tracking ID */}
+                        <a href={getFileUrl(doc.file)} target="_blank" rel="noopener noreferrer" className="font-mono text-xs font-bold text-blue-600 hover:underline uppercase">
+                            {doc.tracking_id}
+                        </a>
                         <span className={`px-2 py-1 rounded text-[10px] font-bold uppercase border ${getStatusColor(doc.status)}`}>
                             {getClientStatus(doc.status)}
                         </span>
@@ -161,56 +183,80 @@ export default function ClientDashboard() {
         </div>
       </div>
 
+      {/* --- NEW: Document Preview Modal --- */}
+      {previewUrl && (
+          <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 backdrop-blur-sm p-4">
+              <div className="bg-white p-6 rounded-xl w-full max-w-4xl h-[90vh] flex flex-col shadow-2xl animate-scale-in">
+                  <div className="flex justify-between items-center mb-4 border-b pb-2">
+                      <h3 className="text-lg font-bold">Document Preview</h3>
+                      <button onClick={cancelUpload} className="text-xl font-bold text-slate-400 hover:text-red-500">&times;</button>
+                  </div>
+                  <div className="flex-1 bg-slate-100 rounded-lg border border-slate-200 mb-4 overflow-hidden">
+                      <iframe src={previewUrl} className="w-full h-full" title="Document Preview"></iframe>
+                  </div>
+                  <div className="flex justify-end gap-3 pt-2">
+                      <button onClick={cancelUpload} disabled={isUploading} className="px-6 py-2 rounded-lg font-bold text-slate-600 bg-slate-100 hover:bg-slate-200 transition">
+                          Cancel
+                      </button>
+                      <button onClick={confirmUpload} disabled={isUploading} className="px-6 py-2 rounded-lg font-bold text-white bg-blue-600 hover:bg-blue-700 disabled:opacity-50 transition">
+                          {isUploading ? 'Uploading...' : 'Confirm & Upload'}
+                      </button>
+                  </div>
+              </div>
+          </div>
+      )}
+
+      {/* Info Modal */}
       {infoDoc && (
-        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 backdrop-blur-sm p-4">
-            <div className="bg-white p-6 rounded-xl w-full max-w-md animate-scale-in shadow-2xl">
-                <div className="flex justify-between items-center mb-4 border-b pb-2"><h3 className="font-bold text-lg">Status & Remarks</h3><button onClick={() => setInfoDoc(null)} className="text-xl">&times;</button></div>
-                
-                {infoDoc.notes && infoDoc.notes.length > 0 && (
-                    <div className="mb-4 bg-slate-50 p-3 rounded-lg border border-slate-200 max-h-32 overflow-y-auto">
-                        <p className="text-xs font-bold text-slate-400 uppercase mb-2">Admin Remarks</p>
-                        {infoDoc.notes.map((n, i) => (
-                            <div key={i} className="text-xs border-b border-slate-200 pb-2 mb-2 last:border-0">
-                                <span className="font-bold text-blue-700">Admin: </span>
-                                <span className="text-slate-700">{n.message}</span>
-                                <div className="text-[9px] text-slate-400 mt-0.5">{formatIST(n.timestamp)}</div>
-                            </div>
-                        ))}
-                    </div>
-                )}
+          <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 backdrop-blur-sm p-4">
+              <div className="bg-white p-6 rounded-xl w-full max-w-lg shadow-2xl animate-scale-in">
+                  <div className="flex justify-between items-center mb-4 border-b pb-2"><h3 className="font-bold text-lg">Status & Remarks</h3><button onClick={() => setInfoDoc(null)} className="text-xl">&times;</button></div>
+                  
+                  {infoDoc.notes && infoDoc.notes.length > 0 && (
+                      <div className="mb-4 bg-slate-50 p-3 rounded-lg border border-slate-200 max-h-32 overflow-y-auto">
+                          <p className="text-xs font-bold text-slate-400 uppercase mb-2">Admin Remarks</p>
+                          {infoDoc.notes.map((n, i) => (
+                              <div key={i} className="text-xs border-b border-slate-200 pb-2 mb-2 last:border-0">
+                                  <span className="font-bold text-blue-700">Admin: </span>
+                                  <span className="text-slate-700">{n.message}</span>
+                                  <div className="text-[9px] text-slate-400 mt-0.5">{formatIST(n.timestamp)}</div>
+                              </div>
+                          ))}
+                      </div>
+                  )}
 
-                <div className="space-y-4 text-sm">
-                    <div className="bg-blue-50 p-3 rounded-lg border text-center border-blue-100"><p className="text-xs font-bold uppercase text-blue-800">Tracking ID</p><p className="font-mono text-2xl font-extrabold text-blue-900">{infoDoc.tracking_id}</p></div>
-                    
-                    <div className="bg-slate-50 p-6 rounded-lg border space-y-6">
-                        <div className="flex items-center gap-4">
-                            <div className="w-10 h-10 rounded-full bg-green-100 flex items-center justify-center text-xl">📤</div>
-                            <div><p className="font-bold">Received</p><p className="text-xs text-slate-500">{formatIST(infoDoc.uploaded_at)}</p></div>
-                        </div>
-                        <div className="flex items-center gap-4">
-                            <div className={`w-10 h-10 rounded-full flex items-center justify-center text-xl ${infoDoc.status === DOC_STATUS.COMPLETED ? 'bg-green-100' : 'bg-yellow-100 animate-pulse'}`}>{infoDoc.status === DOC_STATUS.COMPLETED ? '✅' : '⚙️'}</div>
-                            <div>
-                                <p className="font-bold">{getClientStatus(infoDoc.status) === 'Completed' ? 'Verification Complete' : 'Internal Processing'}</p>
-                                <p className="text-xs text-slate-500">{getClientStatus(infoDoc.status) === 'Completed' ? 'Final report ready.' : 'Currently under review by our team.'}</p>
-                            </div>
-                        </div>
-                    </div>
+                  <div className="space-y-4 text-sm">
+                      <div className="bg-blue-50 p-3 rounded-lg border text-center border-blue-100"><p className="text-xs font-bold uppercase text-blue-800">Tracking ID</p><p className="font-mono text-2xl font-extrabold text-blue-900">{infoDoc.tracking_id}</p></div>
+                      
+                      <div className="bg-slate-50 p-6 rounded-lg border space-y-6">
+                          <div className="flex items-center gap-4">
+                              <div className="w-10 h-10 rounded-full bg-green-100 flex items-center justify-center text-xl">📤</div>
+                              <div><p className="font-bold">Received</p><p className="text-xs text-slate-500">{formatIST(infoDoc.uploaded_at)}</p></div>
+                          </div>
+                          <div className="flex items-center gap-4">
+                              <div className={`w-10 h-10 rounded-full flex items-center justify-center text-xl ${infoDoc.status === DOC_STATUS.COMPLETED ? 'bg-green-100' : 'bg-yellow-100 animate-pulse'}`}>{infoDoc.status === DOC_STATUS.COMPLETED ? '✅' : '⚙️'}</div>
+                              <div>
+                                  <p className="font-bold">{getClientStatus(infoDoc.status) === 'Completed' ? 'Verification Complete' : 'Internal Processing'}</p>
+                                  <p className="text-xs text-slate-500">{getClientStatus(infoDoc.status) === 'Completed' ? 'Final report ready.' : 'Currently under review by our team.'}</p>
+                              </div>
+                          </div>
+                      </div>
 
-                    {infoDoc.fee_total > 0 && (
-                        <div className="bg-slate-50 p-3 rounded border">
-                            <span className="text-xs font-bold uppercase block mb-1">Financial History</span>
-                            {infoDoc.installments?.map((inst, idx) => (
-                                <div key={inst._id} className="flex justify-between text-xs mt-1 border-b pb-1 last:border-0">
-                                    <span>Part {idx + 1} (₹{inst.amount})</span>
-                                    <span className={inst.status==='Paid'?"text-green-600 font-bold":"text-red-500 font-bold"}>{inst.status === 'Paid' ? `Paid: ${formatIST(inst.paid_at)}` : 'Unpaid'}</span>
-                                </div>
-                            ))}
-                        </div>
-                    )}
-                    <button onClick={() => setInfoDoc(null)} className="w-full bg-slate-900 text-white py-2 rounded font-bold hover:bg-slate-800 transition">Close</button>
-                </div>
-            </div>
-        </div>
+                      {infoDoc.fee_total > 0 && (
+                          <div className="bg-slate-50 p-3 rounded border">
+                              <span className="text-xs font-bold uppercase block mb-1">Financial History</span>
+                              {infoDoc.installments?.map((inst, idx) => (
+                                  <div key={inst._id} className="flex justify-between text-xs mt-1 border-b pb-1 last:border-0">
+                                      <span>Part {idx + 1} (₹{inst.amount})</span>
+                                      <span className={inst.status==='Paid'?"text-green-600 font-bold":"text-red-500 font-bold"}>{inst.status === 'Paid' ? `Paid: ${formatIST(inst.paid_at)}` : 'Unpaid'}</span>
+                                  </div>
+                              ))}
+                          </div>
+                      )}
+                      <button onClick={() => setInfoDoc(null)} className="w-full bg-slate-900 text-white py-2 rounded font-bold hover:bg-slate-800 transition">Close</button>
+                  </div>
+              </div>
+          </div>
       )}
     </div>
   );
