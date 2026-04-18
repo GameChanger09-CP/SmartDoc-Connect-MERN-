@@ -1,17 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useParams } from 'react-router-dom';
 import api from '../api';
-
-// Helper to load Razorpay Script dynamically
-const loadRazorpay = () => {
-    return new Promise((resolve) => {
-        const script = document.createElement('script');
-        script.src = 'https://checkout.razorpay.com/v1/checkout.js';
-        script.onload = () => resolve(true);
-        script.onerror = () => resolve(false);
-        document.body.appendChild(script);
-    });
-};
+import { loadRazorpay, APP_NAME } from '../../constants';
 
 export default function PublicPayment() {
     const { docId, installmentId } = useParams();
@@ -21,22 +11,22 @@ export default function PublicPayment() {
     const [success, setSuccess] = useState(false);
 
     useEffect(() => {
+        let isMounted = true;
         const fetchInfo = async () => {
             try {
-                // Fetch public info (no auth required)
                 const res = await api.get(`/api/documents/public-payment-info/${docId}/${installmentId}`);
-                setData(res.data);
+                if (isMounted) setData(res.data);
             } catch (e) {
-                setError(e.response?.data?.error || "Invalid Link or Already Paid");
+                if (isMounted) setError(e.response?.data?.error || "Invalid Link or Already Paid");
             } finally {
-                setLoading(false);
+                if (isMounted) setLoading(false);
             }
         };
-        fetchInfo();
+        if (docId && installmentId) fetchInfo();
+        return () => { isMounted = false; };
     }, [docId, installmentId]);
 
     const handlePay = async () => {
-        // 🔥 CRITICAL FIX: Ensure script loads before using it
         const isLoaded = await loadRazorpay();
         if (!isLoaded) return alert("Failed to load Payment Gateway. Check internet connection.");
 
@@ -44,7 +34,7 @@ export default function PublicPayment() {
             key: data.key,
             amount: Math.round(data.amount * 100),
             currency: "INR",
-            name: "SmartDoc Connect",
+            name: APP_NAME,
             description: `Fee Payment for ${data.tracking_id}`,
             order_id: data.razorpay_order_id,
             handler: async function (response) {
@@ -69,8 +59,8 @@ export default function PublicPayment() {
     if (loading) return <div className="min-h-screen flex items-center justify-center font-sans text-slate-500">Loading Payment Details...</div>;
     
     if (success) return (
-        <div className="min-h-screen flex items-center justify-center bg-green-50 font-sans">
-            <div className="text-center p-8 bg-white rounded-2xl shadow-xl">
+        <div className="min-h-screen flex items-center justify-center bg-green-50 font-sans p-4">
+            <div className="text-center p-8 bg-white rounded-2xl shadow-xl w-full max-w-md">
                 <h1 className="text-5xl mb-4">✅</h1>
                 <h2 className="text-2xl font-bold text-green-700">Payment Successful!</h2>
                 <p className="text-gray-500 mt-2">The document status has been updated.</p>
@@ -80,8 +70,8 @@ export default function PublicPayment() {
     );
 
     if (error) return (
-        <div className="min-h-screen flex items-center justify-center bg-red-50 font-sans">
-            <div className="text-center p-8 bg-white rounded-2xl shadow-xl">
+        <div className="min-h-screen flex items-center justify-center bg-red-50 font-sans p-4">
+            <div className="text-center p-8 bg-white rounded-2xl shadow-xl w-full max-w-md">
                 <h1 className="text-5xl mb-4">⚠️</h1>
                 <h2 className="text-2xl font-bold text-red-700">Payment Link Invalid</h2>
                 <p className="text-red-500 mt-2">{error}</p>
@@ -95,7 +85,7 @@ export default function PublicPayment() {
                 <div className="mb-8">
                     <div className="w-20 h-20 bg-blue-50 text-blue-600 rounded-full flex items-center justify-center text-4xl mx-auto mb-4 shadow-sm">💳</div>
                     <h1 className="text-2xl font-extrabold text-slate-900">Secure Payment</h1>
-                    <p className="text-slate-500 text-sm mt-1">SmartDoc Connect</p>
+                    <p className="text-slate-500 text-sm mt-1">{APP_NAME}</p>
                 </div>
 
                 <div className="bg-slate-50 p-6 rounded-xl border border-slate-200 mb-8 text-left space-y-4">

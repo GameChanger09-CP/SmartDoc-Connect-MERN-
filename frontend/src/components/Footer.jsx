@@ -1,4 +1,5 @@
 import React from 'react';
+import { APP_NAME, SUPPORT_EMAIL } from '../../constants';
 
 export default function Footer() {
   return (
@@ -8,7 +9,7 @@ export default function Footer() {
           <div>
             <div className="flex items-center gap-2 mb-4">
               <div className="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center text-white font-bold">SD</div>
-              <span className="text-xl font-bold text-white">SmartDoc Connect</span>
+              <span className="text-xl font-bold text-white">{APP_NAME}</span>
             </div>
             <p className="text-sm text-slate-400">Secure enterprise document routing and payments.</p>
           </div>
@@ -22,11 +23,11 @@ export default function Footer() {
           </div>
           <div>
             <h4 className="text-white font-bold mb-4 uppercase text-xs tracking-wider">Contact</h4>
-            <p className="text-sm">support@smartdoc.com</p>
+            <p className="text-sm">{SUPPORT_EMAIL}</p>
           </div>
         </div>
         <div className="border-t border-slate-800 mt-12 pt-8 text-center text-xs text-slate-500">
-          &copy; {new Date().getFullYear()} SmartDoc Connect.
+          &copy; {new Date().getFullYear()} {APP_NAME}.
         </div>
       </div>
     </footer>

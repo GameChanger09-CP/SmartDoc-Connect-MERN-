@@ -1,45 +1,30 @@
 import React, { useState, useEffect } from 'react';
 import api from '../api';
 import Navbar from '../components/Navbar';
-
-const formatIST = (dateString) => {
-    if (!dateString) return '-';
-    const date = new Date(dateString);
-    return date.toLocaleString('en-IN', { timeZone: 'Asia/Kolkata', day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit', hour12: true });
-};
-
-const loadRazorpay = () => {
-    return new Promise((resolve) => {
-        if (window.Razorpay) { resolve(true); return; }
-        const script = document.createElement('script');
-        script.src = 'https://checkout.razorpay.com/v1/checkout.js';
-        script.onload = () => resolve(true);
-        script.onerror = () => resolve(false);
-        document.body.appendChild(script);
-    });
-};
+import { formatIST, getFileUrl, forceDownload, loadRazorpay, DOC_STATUS } from '../../constants';
 
 export default function ClientDashboard() {
   const [file, setFile] = useState(null);
   const [docs, setDocs] = useState([]);
   const [filterStatus, setFilterStatus] = useState("All"); 
   const [infoDoc, setInfoDoc] = useState(null); 
+  const [isUploading, setIsUploading] = useState(false);
 
   const fetchDocs = async () => {
     try {
         const res = await api.get('/api/documents/');
-        setDocs(Array.isArray(res.data) ? res.data : res.data.results || []);
+        setDocs(Array.isArray(res?.data) ? res.data : []);
     } catch (error) { console.error("Fetch error", error); }
   };
 
   useEffect(() => { fetchDocs(); }, []);
 
   const getClientStatus = (status) => {
-      const activeStates = ['Review_Required', 'In_Progress', 'With_Faculty', 'Faculty_Reported', 'Dept_Reported', 'Returned_To_Main'];
+      const activeStates = [DOC_STATUS.REVIEW_REQUIRED, DOC_STATUS.IN_PROGRESS, DOC_STATUS.WITH_FACULTY, DOC_STATUS.FACULTY_REPORTED, DOC_STATUS.DEPT_REPORTED, DOC_STATUS.RETURNED_TO_MAIN];
       if (activeStates.includes(status)) return 'In Progress';
-      if (status === 'Completed') return 'Completed';
-      if (status === 'Declined') return 'Declined';
-      if (status === 'Frozen') return 'On Hold';
+      if (status === DOC_STATUS.COMPLETED) return 'Completed';
+      if (status === DOC_STATUS.DECLINED) return 'Declined';
+      if (status === DOC_STATUS.FROZEN) return 'On Hold';
       return status; 
   };
 
@@ -53,22 +38,30 @@ export default function ClientDashboard() {
 
   const filteredDocs = docs.filter(doc => {
       if (filterStatus === "All") return true;
-      if (filterStatus === "Active") return doc.status !== 'Completed' && doc.status !== 'Declined';
-      if (filterStatus === "Completed") return doc.status === 'Completed';
+      if (filterStatus === "Active") return doc.status !== DOC_STATUS.COMPLETED && doc.status !== DOC_STATUS.DECLINED;
+      if (filterStatus === "Completed") return doc.status === DOC_STATUS.COMPLETED;
       return true;
   });
 
   const handleUpload = async (e) => {
     e.preventDefault();
-    if(!file) return alert("Please select a file");
+    if(!file) return alert("Please select a file to upload.");
+    setIsUploading(true);
     const formData = new FormData(); formData.append('file', file);
-    try { await api.post('/api/documents/', formData); fetchDocs(); setFile(null); alert('Uploaded!'); } 
-    catch (error) { alert("Upload Failed."); }
+    try { 
+        await api.post('/api/documents/', formData); 
+        fetchDocs(); 
+        setFile(null);
+        e.target.reset(); // Clear input
+        alert('Document uploaded successfully!'); 
+    } 
+    catch (error) { alert(error.response?.data?.error || "Upload Failed."); }
+    finally { setIsUploading(false); }
   };
 
   const handleCheckout = async (doc, installment) => {
       const isLoaded = await loadRazorpay();
-      if (!isLoaded) return alert("Razorpay failed to load.");
+      if (!isLoaded) return alert("Razorpay failed to load. Check your internet connection.");
       try {
           const { data: { key } } = await api.get('/api/documents/get-razorpay-key');
           const options = {
@@ -88,29 +81,13 @@ export default function ClientDashboard() {
                           razorpay_signature: response.razorpay_signature
                       });
                       alert("Payment Successful! ✅"); fetchDocs();
-                  } catch (err) { alert("Verification failed."); }
+                  } catch (err) { alert("Verification failed. Please contact support."); }
               },
               theme: { color: "#2563EB" }
           };
           const rzp = new window.Razorpay(options);
           rzp.open();
-      } catch (err) { alert("Payment init failed."); }
-  };
-
-  const getFileUrl = (path) => path ? `http://127.0.0.1:8000/${path.replace(/\\/g, '/')}` : '#';
-
-  // 🔥 FORCE DOWNLOAD 🔥
-  const handleForceDownload = (url, baseFilename) => {
-      const extension = url.split('.').pop().split(/\#|\?/)[0];
-      const filename = `${baseFilename}.${extension}`;
-      fetch(url).then(response => response.blob()).then(blob => {
-          const link = document.createElement("a");
-          link.href = URL.createObjectURL(blob);
-          link.download = filename;
-          document.body.appendChild(link);
-          link.click();
-          document.body.removeChild(link);
-      }).catch(() => window.open(url, '_blank'));
+      } catch (err) { alert("Payment initialization failed."); }
   };
 
   return (
@@ -119,19 +96,24 @@ export default function ClientDashboard() {
       <div className="max-w-7xl mx-auto p-6 py-10">
         <div className="mb-10 flex justify-between items-end">
             <div><h1 className="text-3xl font-extrabold text-slate-900">My Documents</h1><p className="text-slate-500 mt-1">Track status and pay fees.</p></div>
-            <select value={filterStatus} onChange={(e) => setFilterStatus(e.target.value)} className="text-sm border border-slate-300 rounded-lg p-2"><option value="All">All Documents</option><option value="Active">Active</option><option value="Completed">Completed</option></select>
+            <select value={filterStatus} onChange={(e) => setFilterStatus(e.target.value)} className="text-sm border border-slate-300 rounded-lg p-2 outline-none"><option value="All">All Documents</option><option value="Active">Active</option><option value="Completed">Completed</option></select>
         </div>
 
         <div className="bg-white p-8 rounded-2xl shadow-sm border border-slate-200 mb-10 flex flex-col md:flex-row items-center gap-6 animate-fade-in-up">
             <div className="p-4 bg-blue-50 text-blue-600 rounded-full text-3xl">📄</div>
             <div className="flex-grow"><h3 className="text-lg font-bold">New Application</h3><p className="text-sm text-slate-500">Upload PDF documents.</p></div>
-            <form onSubmit={handleUpload} className="flex gap-3"><input type="file" onChange={e => setFile(e.target.files[0])} className="text-sm file:bg-blue-50 file:text-blue-700 file:border-0 file:rounded-full file:px-4 file:py-2" /><button className="bg-blue-600 text-white px-6 py-2 rounded-lg font-bold shadow">Upload</button></form>
+            <form onSubmit={handleUpload} className="flex gap-3">
+                <input type="file" required onChange={e => setFile(e.target.files[0])} className="text-sm file:bg-blue-50 file:text-blue-700 file:border-0 file:rounded-full file:px-4 file:py-2 hover:file:bg-blue-100 transition cursor-pointer" />
+                <button disabled={isUploading || !file} className="bg-blue-600 text-white px-6 py-2 rounded-lg font-bold shadow disabled:opacity-50 transition hover:bg-blue-700">
+                    {isUploading ? 'Uploading...' : 'Upload'}
+                </button>
+            </form>
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             {filteredDocs.map(doc => (
                 <div key={doc._id} className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 flex flex-col relative overflow-hidden group hover:shadow-xl transition duration-300 animate-fade-in-up">
-                    <div className={`absolute top-0 left-0 w-1 h-full ${doc.status === 'Completed' ? 'bg-green-500' : 'bg-blue-500'}`}></div>
+                    <div className={`absolute top-0 left-0 w-1 h-full ${doc.status === DOC_STATUS.COMPLETED ? 'bg-green-500' : 'bg-blue-500'}`}></div>
                     
                     <div className="flex justify-between items-start mb-4">
                         <span className="font-mono text-xs font-bold text-slate-400 uppercase">{doc.tracking_id}</span>
@@ -149,7 +131,7 @@ export default function ClientDashboard() {
                                 <span className="text-xs font-bold text-slate-800 uppercase">Fees: ₹{doc.fee_total}</span>
                                 <span className={`text-[10px] font-bold px-2 py-0.5 rounded uppercase ${doc.fee_status === 'Paid' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>{doc.fee_status}</span>
                             </div>
-                            {doc.installments.map((inst, i) => (
+                            {doc.installments?.map((inst, i) => (
                                 <div key={inst._id} className="flex justify-between items-center text-xs mt-2">
                                     <span className="text-slate-600 font-medium">Part {i+1}: ₹{inst.amount}</span>
                                     {inst.status === 'Paid' ? (
@@ -166,14 +148,12 @@ export default function ClientDashboard() {
                         <div className="flex justify-between items-center">
                             <button onClick={() => setInfoDoc(doc)} className="text-sm font-bold text-blue-600 hover:underline">View Status</button>
                         </div>
-                        {doc.status === 'Completed' && doc.dept_report && (
-                            <div className="flex gap-2">
-                                <a href={getFileUrl(doc.dept_report)} target="_blank" rel="noopener noreferrer" className="flex-1 text-center text-[10px] bg-purple-50 text-purple-700 px-2 py-1 rounded border border-purple-200 font-bold hover:bg-purple-100">View Report</a>
-                                <button onClick={() => handleForceDownload(getFileUrl(doc.dept_report), `${doc.tracking_id}_report`)} className="flex-1 text-center text-[10px] bg-green-50 text-green-700 px-2 py-1 rounded border border-green-200 font-bold hover:bg-green-100">Download</button>
+                        {doc.status === DOC_STATUS.COMPLETED && doc.dept_report && (
+                            <div className="flex gap-2 mt-2">
+                                <a href={getFileUrl(doc.dept_report)} target="_blank" rel="noopener noreferrer" className="flex-1 text-center text-[10px] bg-purple-50 text-purple-700 px-2 py-1.5 rounded border border-purple-200 font-bold hover:bg-purple-100 transition">View Report</a>
+                                <button onClick={() => forceDownload(getFileUrl(doc.dept_report), `${doc.tracking_id}_report`)} className="flex-1 text-center text-[10px] bg-green-50 text-green-700 px-2 py-1.5 rounded border border-green-200 font-bold hover:bg-green-100 transition">Download</button>
                             </div>
                         )}
-
-
                     </div>
                 </div>
             ))}
@@ -186,7 +166,6 @@ export default function ClientDashboard() {
             <div className="bg-white p-6 rounded-xl w-full max-w-md animate-scale-in shadow-2xl">
                 <div className="flex justify-between items-center mb-4 border-b pb-2"><h3 className="font-bold text-lg">Status & Remarks</h3><button onClick={() => setInfoDoc(null)} className="text-xl">&times;</button></div>
                 
-                {/* 🔥 NOTES SECTION (Visible to Client if Main_Admin) 🔥 */}
                 {infoDoc.notes && infoDoc.notes.length > 0 && (
                     <div className="mb-4 bg-slate-50 p-3 rounded-lg border border-slate-200 max-h-32 overflow-y-auto">
                         <p className="text-xs font-bold text-slate-400 uppercase mb-2">Admin Remarks</p>
@@ -201,7 +180,7 @@ export default function ClientDashboard() {
                 )}
 
                 <div className="space-y-4 text-sm">
-                    <div className="bg-blue-50 p-3 rounded-lg border text-center"><p className="text-xs font-bold uppercase">Tracking ID</p><p className="font-mono text-2xl font-extrabold text-blue-900">{infoDoc.tracking_id}</p></div>
+                    <div className="bg-blue-50 p-3 rounded-lg border text-center border-blue-100"><p className="text-xs font-bold uppercase text-blue-800">Tracking ID</p><p className="font-mono text-2xl font-extrabold text-blue-900">{infoDoc.tracking_id}</p></div>
                     
                     <div className="bg-slate-50 p-6 rounded-lg border space-y-6">
                         <div className="flex items-center gap-4">
@@ -209,7 +188,7 @@ export default function ClientDashboard() {
                             <div><p className="font-bold">Received</p><p className="text-xs text-slate-500">{formatIST(infoDoc.uploaded_at)}</p></div>
                         </div>
                         <div className="flex items-center gap-4">
-                            <div className={`w-10 h-10 rounded-full flex items-center justify-center text-xl ${infoDoc.status === 'Completed' ? 'bg-green-100' : 'bg-yellow-100 animate-pulse'}`}>{infoDoc.status === 'Completed' ? '✅' : '⚙️'}</div>
+                            <div className={`w-10 h-10 rounded-full flex items-center justify-center text-xl ${infoDoc.status === DOC_STATUS.COMPLETED ? 'bg-green-100' : 'bg-yellow-100 animate-pulse'}`}>{infoDoc.status === DOC_STATUS.COMPLETED ? '✅' : '⚙️'}</div>
                             <div>
                                 <p className="font-bold">{getClientStatus(infoDoc.status) === 'Completed' ? 'Verification Complete' : 'Internal Processing'}</p>
                                 <p className="text-xs text-slate-500">{getClientStatus(infoDoc.status) === 'Completed' ? 'Final report ready.' : 'Currently under review by our team.'}</p>
@@ -220,15 +199,15 @@ export default function ClientDashboard() {
                     {infoDoc.fee_total > 0 && (
                         <div className="bg-slate-50 p-3 rounded border">
                             <span className="text-xs font-bold uppercase block mb-1">Financial History</span>
-                            {infoDoc.installments.map((inst, idx) => (
-                                <div key={inst._id} className="flex justify-between text-xs mt-1 border-b pb-1">
+                            {infoDoc.installments?.map((inst, idx) => (
+                                <div key={inst._id} className="flex justify-between text-xs mt-1 border-b pb-1 last:border-0">
                                     <span>Part {idx + 1} (₹{inst.amount})</span>
                                     <span className={inst.status==='Paid'?"text-green-600 font-bold":"text-red-500 font-bold"}>{inst.status === 'Paid' ? `Paid: ${formatIST(inst.paid_at)}` : 'Unpaid'}</span>
                                 </div>
                             ))}
                         </div>
                     )}
-                    <button onClick={() => setInfoDoc(null)} className="w-full bg-slate-900 text-white py-2 rounded font-bold hover:bg-slate-800">Close</button>
+                    <button onClick={() => setInfoDoc(null)} className="w-full bg-slate-900 text-white py-2 rounded font-bold hover:bg-slate-800 transition">Close</button>
                 </div>
             </div>
         </div>

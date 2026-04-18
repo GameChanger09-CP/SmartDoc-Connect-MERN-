@@ -1,6 +1,7 @@
 import React from 'react';
 import Navbar from '../components/Navbar';
 import Footer from '../components/Footer';
+import { APP_NAME } from '../../constants';
 
 export default function About() {
   return (
@@ -11,7 +12,7 @@ export default function About() {
         {/* Header */}
         <div className="bg-slate-900 text-white py-24 text-center relative overflow-hidden">
           <div className="absolute top-0 left-0 w-full h-full bg-blue-600/10 animate-pulse"></div>
-          <h1 className="text-4xl md:text-6xl font-extrabold mb-4 relative z-10">About SmartDoc</h1>
+          <h1 className="text-4xl md:text-6xl font-extrabold mb-4 relative z-10">About {APP_NAME.split(' ')[0]}</h1>
           <p className="text-slate-400 max-w-2xl mx-auto px-6 relative z-10 text-lg">
             Bridging the gap between administrative bureaucracy and digital efficiency.
           </p>
@@ -28,7 +29,7 @@ export default function About() {
                 Colleges and large enterprises struggle with mountains of paperwork. Applications get lost, payments are handled manually, and tracking is non-existent.
               </p>
               <p className="text-gray-600 leading-relaxed text-lg">
-                **SmartDoc Connect** was engineered to solve this. We provide a centralized platform where documents are digitized, securely routed to the right departments, and monetized efficiently through integrated payment gateways.
+                **{APP_NAME}** was engineered to solve this. We provide a centralized platform where documents are digitized, securely routed to the right departments, and monetized efficiently through integrated payment gateways.
               </p>
             </div>
             <div className="flex-1 bg-white p-10 rounded-3xl shadow-xl border border-gray-100 transform hover:-translate-y-2 transition duration-500">
