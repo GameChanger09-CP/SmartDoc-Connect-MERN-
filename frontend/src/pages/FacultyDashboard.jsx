@@ -8,6 +8,9 @@ export default function FacultyDashboard() {
   const [filterStatus, setFilterStatus] = useState("All"); 
   const [infoDoc, setInfoDoc] = useState(null); 
   const [isProcessing, setIsProcessing] = useState(false);
+  
+  const [paymentDoc, setPaymentDoc] = useState(null); 
+  const [installments, setInstallments] = useState([{ amount: '' }, { amount: '' }]); 
 
   const fetchDocs = async () => {
     try {
@@ -42,6 +45,18 @@ export default function FacultyDashboard() {
       try { await api.post(`/api/documents/${id}/return`, { note }); alert("Returned."); fetchDocs(); } catch(e) { alert("Failed."); }
   };
 
+  const handlePaymentRequest = async (e) => { 
+      e.preventDefault(); 
+      setIsProcessing(true);
+      const amounts = installments.map(i => i.amount === '' ? 0 : Number(i.amount)); 
+      try { await api.post(`/api/documents/${paymentDoc._id}/request_payment`, { installments: amounts }); alert("Payment Structure Generated!"); setPaymentDoc(null); fetchDocs(); } catch (error) { alert("Failed."); } 
+      finally { setIsProcessing(false); }
+  };
+
+  const handleAddInstallment = () => setInstallments([...installments, { amount: '' }]);
+  const handleRemoveInstallment = (index) => setInstallments(installments.filter((_, i) => i !== index));
+  const handleInstallmentChange = (index, value) => { const newInst = [...installments]; newInst[index].amount = value; setInstallments(newInst); };
+
   return (
     <div className="min-h-screen bg-slate-50 font-sans pb-12">
       <Navbar />
@@ -60,6 +75,8 @@ export default function FacultyDashboard() {
                             <span className="bg-blue-100 text-blue-700 text-xs font-bold px-2 py-1 rounded">TASK</span>
                             <a href={getFileUrl(doc.file)} target="_blank" rel="noreferrer" className="text-xl font-mono font-bold text-gray-900 hover:text-blue-600">{doc.tracking_id}</a>
                             <button onClick={() => setInfoDoc(doc)} className="text-gray-400 text-lg hover:text-blue-600 transition">ℹ️</button>
+                            
+                            {doc.fee_total === 0 && <button onClick={() => { setPaymentDoc(doc); setInstallments([{amount: ''}, {amount: ''}]); }} className="w-8 h-8 rounded-full bg-green-100 text-green-600 hover:bg-green-200 transition flex items-center justify-center font-bold text-sm ml-2" title="Request Fee">₹</button>}
                         </div>
                         <span className="px-4 py-1.5 rounded-full text-xs font-bold bg-gray-100 border">{doc.status?.replace(/_/g, ' ')}</span>
                     </div>
@@ -93,14 +110,48 @@ export default function FacultyDashboard() {
         </div>
       </main>
 
+      {/* Payment Modal */}
+      {paymentDoc && (
+        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 backdrop-blur-sm p-4">
+            <div className="bg-white p-8 rounded-xl shadow-2xl w-full max-w-md animate-scale-in max-h-[90vh] overflow-y-auto">
+                <h3 className="text-xl font-bold mb-4 text-slate-800 border-b pb-2">Generate Fee Structure</h3>
+                <form onSubmit={handlePaymentRequest}>
+                    <div className="space-y-4 mb-6">
+                        {installments.map((inst, index) => (
+                            <div key={index} className="flex flex-col gap-1">
+                                <label className={`block text-xs font-bold uppercase mb-1 ${index===0 ? 'text-blue-600' : 'text-slate-500'}`}>
+                                    {index === 0 ? '₹ Advance Amount (Paid Now)' : `Future Installment #${index} (Paid Later)`}
+                                </label>
+                                <div className="flex items-center gap-2">
+                                    <input 
+                                        type="number" 
+                                        min="0"
+                                        value={inst.amount} 
+                                        onChange={e => handleInstallmentChange(index, e.target.value)} 
+                                        className={`w-full border p-2 rounded-lg focus:ring-2 outline-none ${index===0 ? 'border-blue-300 focus:ring-blue-500 bg-blue-50' : 'border-slate-300 focus:ring-slate-500'}`}
+                                        placeholder={index === 0 ? "e.g. 500 (Can be 0)" : "e.g. 2000"} 
+                                    />
+                                    {index > 0 && <button type="button" onClick={() => handleRemoveInstallment(index)} className="text-red-500 font-bold text-xl hover:text-red-700">&times;</button>}
+                                </div>
+                                {index === 0 && <p className="text-[10px] text-slate-400">Enter 0 if no advance is required.</p>}
+                            </div>
+                        ))}
+                    </div>
+                    <button type="button" onClick={handleAddInstallment} className="text-xs font-bold text-slate-600 border border-slate-300 px-3 py-2 rounded-lg hover:bg-slate-50 transition w-full mb-6 border-dashed">+ Add Another Future Installment</button>
+                    <div className="flex gap-3 justify-end pt-4 border-t border-slate-100">
+                        <button type="button" onClick={() => setPaymentDoc(null)} className="px-4 py-2 text-slate-600 font-bold hover:bg-slate-100 rounded-lg">Cancel</button>
+                        <button type="submit" disabled={isProcessing} className="px-4 py-2 bg-green-600 text-white font-bold rounded-lg shadow hover:bg-green-700 disabled:opacity-50">Create Plan</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+      )}
+
       {/* INFO MODAL */}
       {infoDoc && (
           <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 backdrop-blur-sm p-4">
               <div className="bg-white p-6 rounded-xl w-full max-w-md max-h-[90vh] overflow-y-auto animate-scale-in">
-                  <div className="flex justify-between items-center mb-4 border-b pb-2">
-                      <h3 className="text-lg font-bold">Details</h3>
-                      <button onClick={() => setInfoDoc(null)} className="text-xl hover:text-red-500">&times;</button>
-                  </div>
+                  <div className="flex justify-between items-center mb-4 border-b pb-2"><h3 className="text-lg font-bold">Details</h3><button onClick={() => setInfoDoc(null)} className="text-xl hover:text-red-500">&times;</button></div>
                   <div className="mb-4 bg-slate-50 p-3 rounded border max-h-40 overflow-y-auto">
                       <p className="text-xs font-bold text-slate-400 uppercase mb-2">Communication Log</p>
                       {infoDoc.notes && infoDoc.notes.length > 0 ? infoDoc.notes.map((y, w) => (

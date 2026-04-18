@@ -17,11 +17,9 @@ export default function AdminDashboard() {
   
   const [viewUserHistory, setViewUserHistory] = useState(null);
   const [routingDoc, setRoutingDoc] = useState(null);
-  const [selectedRoutes, setSelectedRoutes] = useState([]); // Holds array of selected Dept IDs
+  const [selectedRoutes, setSelectedRoutes] = useState([]); 
   const [infoDoc, setInfoDoc] = useState(null); 
-  const [paymentDoc, setPaymentDoc] = useState(null); 
   
-  const [installments, setInstallments] = useState([{ amount: '' }, { amount: '' }]); 
   const [newUser, setNewUser] = useState({ username: '', email: '', password: '', role: ROLES.CLIENT, department: '', newDepartmentName: '' });
   const [actionNote, setActionNote] = useState("");
   const [isProcessing, setIsProcessing] = useState(false);
@@ -119,24 +117,6 @@ export default function AdminDashboard() {
       try { await api.post(`/api/documents/${id}/forward_to_client`); fetchData(); setInfoDoc(null); } catch(e) { alert("Failed"); }
   };
 
-  const handleAddInstallment = () => setInstallments([...installments, { amount: '' }]);
-  const handleRemoveInstallment = (index) => setInstallments(installments.filter((_, i) => i !== index));
-  const handleInstallmentChange = (index, value) => { const newInst = [...installments]; newInst[index].amount = value; setInstallments(newInst); };
-
-  const handlePaymentRequest = async (e) => {
-      e.preventDefault();
-      setIsProcessing(true);
-      const amounts = installments.map(i => i.amount === '' ? 0 : Number(i.amount));
-      try { 
-          await api.post(`/api/documents/${paymentDoc._id}/request_payment`, { installments: amounts }); 
-          alert("Payment Structure Generated!"); 
-          setPaymentDoc(null); 
-          setInstallments([{ amount: '' }, { amount: '' }]); 
-          fetchData(); 
-      } catch (error) { alert(error.response?.data?.error || "Failed to generate payment request."); }
-      finally { setIsProcessing(false); }
-  };
-
   const handleSendReminder = async (docId, installmentId) => {
       if(!window.confirm("Send payment reminder email?")) return;
       try {
@@ -175,7 +155,6 @@ export default function AdminDashboard() {
       finally { setIsProcessing(false); }
   };
 
-  // --- Identify if AI suggestion matches a real department in the database ---
   const matchedDept = routingDoc?.ai_suggested_dept 
     ? depts.find(d => d.name.toLowerCase() === routingDoc.ai_suggested_dept.toLowerCase()) 
     : null;
@@ -273,7 +252,6 @@ export default function AdminDashboard() {
                                         <td className="p-4">
                                             <div className="flex items-center justify-center gap-2">
                                                 <button onClick={() => setInfoDoc(doc)} className="w-8 h-8 rounded-full bg-slate-100 text-slate-500 hover:bg-blue-100 hover:text-blue-600 transition flex items-center justify-center" title="Details">ℹ️</button>
-                                                {doc.fee_total === 0 ? (<button onClick={() => { setPaymentDoc(doc); setInstallments([{amount: ''}, {amount: ''}]); }} className="w-8 h-8 rounded-full bg-green-100 text-green-600 hover:bg-green-200 transition flex items-center justify-center font-bold text-sm" title="Request Payment">₹</button>) : <div className="w-8"></div>}
                                                 <button onClick={() => toggleFreeze(doc._id)} className="w-8 h-8 rounded-full bg-gray-100 text-gray-500 hover:bg-gray-200 transition flex items-center justify-center text-sm" title={doc.is_frozen ? "Unfreeze" : "Freeze"}>{doc.is_frozen ? "🔒" : "❄️"}</button>
                                                 <button onClick={() => { setRoutingDoc(doc); setSelectedRoutes(doc.current_dept?.map(d=>d._id) || []); }} className="px-3 py-1.5 rounded-lg bg-blue-50 text-blue-600 text-xs font-bold border border-blue-200 hover:bg-blue-100 transition">Route</button>
                                                 <button onClick={() => declineDoc(doc._id)} className="w-8 h-8 rounded-full bg-red-100 text-red-600 hover:bg-red-200 transition flex items-center justify-center font-bold" title="Decline">✕</button>
@@ -303,44 +281,43 @@ export default function AdminDashboard() {
       {/* --- MODALS --- */}
       {viewUserHistory && <ProfileModal targetUser={viewUserHistory} onClose={() => setViewUserHistory(null)} />}
       
-      {/* ROUTING MODAL: Updated with Checkboxes & Prominent AI Box */}
+      {/* ROUTING MODAL */}
       {routingDoc && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 backdrop-blur-sm p-4">
             <div className="bg-white p-8 rounded-xl shadow-2xl w-full max-w-sm animate-scale-in">
                 <h3 className="text-xl font-bold mb-4">Route Document</h3>
 
-                {/* AI SUGGESTION BOX */}
-                <div className="mb-6 p-4 bg-purple-50 border-2 border-purple-300 shadow-sm rounded-lg flex flex-col gap-2">
-                    <div className="flex items-center gap-2 text-purple-900 font-extrabold text-sm">
-                        <span className="text-2xl">🤖</span> AI Routing Suggestion
-                    </div>
-                    <p className="text-xs text-purple-800 font-medium">
-                        Suggested: <strong className="text-lg bg-white px-2 py-1 rounded shadow-sm inline-block my-1">
-                            {matchedDept ? matchedDept.name : 'N/A'}
-                        </strong> <br/>
-                        Confidence: {routingDoc.ai_confidence || 0}%
-                    </p>
-                    
-                    {routingDoc.ai_suggested_dept && !matchedDept && (
-                        <p className="text-[10px] text-red-500 italic mt-1 leading-tight">
-                            Note: AI suggested "{routingDoc.ai_suggested_dept}", but no exact match was found in your departments.
+                {routingDoc.ai_suggested_dept && (
+                    <div className="mb-6 p-4 bg-purple-50 border-2 border-purple-300 shadow-sm rounded-lg flex flex-col gap-2">
+                        <div className="flex items-center gap-2 text-purple-900 font-extrabold text-sm">
+                            <span className="text-2xl">🤖</span> AI Routing Suggestion
+                        </div>
+                        <p className="text-xs text-purple-800 font-medium">
+                            Suggested Dept Admin: <strong className="text-lg bg-white px-2 py-1 rounded shadow-sm inline-block my-1">{matchedDept ? matchedDept.name : 'N/A'}</strong> <br/>
+                            Confidence: {routingDoc.ai_confidence || 0}%
                         </p>
-                    )}
-                    
-                    {matchedDept && (
-                        <button 
-                            type="button"
-                            onClick={() => {
-                                if(!selectedRoutes.includes(matchedDept._id)) {
-                                    setSelectedRoutes([...selectedRoutes, matchedDept._id]);
-                                }
-                            }}
-                            className="mt-2 bg-purple-600 hover:bg-purple-700 text-white text-xs font-bold py-2 px-4 rounded-lg shadow transition self-start"
-                        >
-                            + Apply Suggestion
-                        </button>
-                    )}
-                </div>
+                        
+                        {routingDoc.ai_suggested_dept && !matchedDept && (
+                            <p className="text-[10px] text-red-500 italic mt-1 leading-tight">
+                                Note: AI suggested "{routingDoc.ai_suggested_dept}", but no exact match was found in your departments.
+                            </p>
+                        )}
+                        
+                        {matchedDept && (
+                            <button 
+                                type="button"
+                                onClick={() => {
+                                    if(!selectedRoutes.includes(matchedDept._id)) {
+                                        setSelectedRoutes([...selectedRoutes, matchedDept._id]);
+                                    }
+                                }}
+                                className="mt-2 bg-purple-600 hover:bg-purple-700 text-white text-xs font-bold py-2 px-4 rounded-lg shadow transition self-start"
+                            >
+                                + Apply Suggestion
+                            </button>
+                        )}
+                    </div>
+                )}
 
                 <form onSubmit={handleRouteSubmit}>
                     <div className="mb-4">
@@ -366,43 +343,6 @@ export default function AdminDashboard() {
                     <div className="flex gap-3 justify-end">
                         <button type="button" onClick={() => { setRoutingDoc(null); setSelectedRoutes([]); }} className="px-4 py-2 text-slate-600 font-bold">Cancel</button>
                         <button type="submit" disabled={isProcessing} className="px-4 py-2 bg-blue-600 text-white font-bold rounded-lg shadow disabled:opacity-50">Confirm Route</button>
-                    </div>
-                </form>
-            </div>
-        </div>
-      )}
-      
-      {/* Payment Modal */}
-      {paymentDoc && (
-        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 backdrop-blur-sm p-4">
-            <div className="bg-white p-8 rounded-xl shadow-2xl w-full max-w-md animate-scale-in max-h-[90vh] overflow-y-auto">
-                <h3 className="text-xl font-bold mb-4 text-slate-800 border-b pb-2">Generate Fee Structure</h3>
-                <form onSubmit={handlePaymentRequest}>
-                    <div className="space-y-4 mb-6">
-                        {installments.map((inst, index) => (
-                            <div key={index} className="flex flex-col gap-1">
-                                <label className={`block text-xs font-bold uppercase mb-1 ${index===0 ? 'text-blue-600' : 'text-slate-500'}`}>
-                                    {index === 0 ? '✨ Advance Amount (Paid Now)' : `Future Installment #${index} (Paid Later)`}
-                                </label>
-                                <div className="flex items-center gap-2">
-                                    <input 
-                                        type="number" 
-                                        min="0"
-                                        value={inst.amount} 
-                                        onChange={e => handleInstallmentChange(index, e.target.value)} 
-                                        className={`w-full border p-2 rounded-lg focus:ring-2 outline-none ${index===0 ? 'border-blue-300 focus:ring-blue-500 bg-blue-50' : 'border-slate-300 focus:ring-slate-500'}`}
-                                        placeholder={index === 0 ? "e.g. 500 (Can be 0)" : "e.g. 2000"} 
-                                    />
-                                    {index > 0 && <button type="button" onClick={() => handleRemoveInstallment(index)} className="text-red-500 font-bold text-xl hover:text-red-700">&times;</button>}
-                                </div>
-                                {index === 0 && <p className="text-[10px] text-slate-400">If 0, client won't be charged immediately.</p>}
-                            </div>
-                        ))}
-                    </div>
-                    <button type="button" onClick={handleAddInstallment} className="text-xs font-bold text-slate-600 border border-slate-300 px-3 py-2 rounded-lg hover:bg-slate-50 transition w-full mb-6 border-dashed">+ Add Another Future Installment</button>
-                    <div className="flex gap-3 justify-end pt-4 border-t border-slate-100">
-                        <button type="button" onClick={() => setPaymentDoc(null)} className="px-4 py-2 text-slate-600 font-bold hover:bg-slate-100 rounded-lg">Cancel</button>
-                        <button type="submit" disabled={isProcessing} className="px-4 py-2 bg-green-600 text-white font-bold rounded-lg shadow hover:bg-green-700 disabled:opacity-50">Create Plan</button>
                     </div>
                 </form>
             </div>
@@ -445,6 +385,7 @@ export default function AdminDashboard() {
           </div>
       )}
       
+      {/* INFO MODAL */}
       {infoDoc && (
           <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 backdrop-blur-sm p-4">
               <div className="bg-white p-6 rounded-xl w-full max-w-lg shadow-2xl animate-scale-in">
@@ -466,14 +407,12 @@ export default function AdminDashboard() {
                           <div className="flex justify-between"><span className="text-slate-600">Uploaded:</span><span className="font-mono">{formatIST(infoDoc.uploaded_at)}</span></div>
                           <div className="flex justify-between"><span className="text-slate-600">Sent to Dept:</span><span className="font-mono">{infoDoc.sent_to_dept_at ? formatIST(infoDoc.sent_to_dept_at) : '-'}</span></div>
                           
-                          {/* Array mapping for Departments */}
                           {infoDoc.current_dept && infoDoc.current_dept.length > 0 && (
                                <div className="flex justify-between pl-4 text-xs"><span className="text-slate-500">↳ Assigned Dept Admins:</span><span className="font-bold text-blue-600 text-right">{infoDoc.current_dept.map(d => d.name).join(', ')}</span></div>
                           )}
 
                           <div className="flex justify-between pl-4 border-l-2 border-yellow-200"><span className="text-slate-600">↳ Faculty Assigned:</span><span className="font-mono text-xs">{infoDoc.assigned_to_faculty_at ? formatIST(infoDoc.assigned_to_faculty_at) : '-'}</span></div>
                           
-                          {/* Array mapping for Faculty */}
                           {infoDoc.current_faculty && infoDoc.current_faculty.length > 0 && (
                                <div className="flex justify-between pl-8 text-xs"><span className="text-slate-500">↳ Assigned Staff:</span><span className="font-bold text-orange-600 text-right">{infoDoc.current_faculty.map(f => f.username).join(', ')}</span></div>
                           )}
@@ -491,7 +430,6 @@ export default function AdminDashboard() {
                                       <span className="text-slate-600">↳ {idx===0 ? "Advance" : "Balance"} (₹{inst.amount}):</span>
                                       <div className="flex items-center gap-2">
                                           <span className={inst.status==='Paid'?"text-green-600 font-bold":"text-red-500 font-bold"}>{inst.status === 'Paid' ? `Paid: ${formatIST(inst.paid_at)}` : 'Unpaid'}</span>
-                                          {inst.status === 'Pending' && inst.amount > 0 && <button onClick={() => handleSendReminder(infoDoc._id, inst._id)} className="bg-orange-100 text-orange-600 px-2 py-0.5 rounded border border-orange-200 text-[10px] font-bold hover:bg-orange-200">🔔 Notify</button>}
                                       </div>
                                   </div>
                               ))}

@@ -83,7 +83,7 @@ export default function PublicPayment() {
         <div className="min-h-screen flex items-center justify-center bg-slate-100 p-4 font-sans">
             <div className="bg-white p-8 rounded-2xl shadow-2xl w-full max-w-md text-center border border-white/50">
                 <div className="mb-8">
-                    <div className="w-20 h-20 bg-blue-50 text-blue-600 rounded-full flex items-center justify-center text-4xl mx-auto mb-4 shadow-sm">💳</div>
+                    <div className="w-20 h-20 bg-blue-50 text-blue-600 rounded-full flex items-center justify-center text-4xl mx-auto mb-4 shadow-sm">₹</div>
                     <h1 className="text-2xl font-extrabold text-slate-900">Secure Payment</h1>
                     <p className="text-slate-500 text-sm mt-1">{APP_NAME}</p>
                 </div>

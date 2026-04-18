@@ -37,7 +37,7 @@ exports.getPendingUsers = async (req, res) => {
 
 exports.createUser = async (req, res) => {
     try {
-        const { username, email, password, role } = req.body;
+        const { username, email, password, role, department, newDepartmentName } = req.body;
         if (!username || !email || !password || !role) return res.status(400).json({ error: "Missing required fields" });
 
         const existingUser = await User.findOne({ $or: [{ username }, { email }] });
@@ -45,15 +45,19 @@ exports.createUser = async (req, res) => {
 
         const hashedPassword = await bcrypt.hash(password, 10);
         
-        // --- FIXED: Dept_Admin Name IS the Department Name ---
-        let finalDeptId = null;
-        if (role === 'Dept_Admin') {
-            const targetDeptName = username.trim();
-            let dept = await Department.findOne({ name: targetDeptName });
+        // --- DYNAMIC DEPARTMENT CREATION & ASSIGNMENT ---
+        let finalDeptId = department || null;
+        
+        if (role === 'Dept_Admin' && newDepartmentName) {
+            // If creating a Dept Admin, optionally create a new Department
+            let dept = await Department.findOne({ name: newDepartmentName.trim() });
             if (!dept) {
-                dept = await Department.create({ name: targetDeptName });
+                dept = await Department.create({ name: newDepartmentName.trim() });
             }
             finalDeptId = dept._id;
+        } else if (role === 'Faculty' && req.user && req.user.department) {
+            // FIX: If a Dept_Admin creates a Faculty, automatically link them to the admin's department!
+            finalDeptId = req.user.department;
         }
 
         const newUser = await User.create({
@@ -143,9 +147,19 @@ exports.rejectUser = async (req, res) => {
 exports.getFaculty = async (req, res) => {
     try {
         if (!req.user.department) return res.status(400).json({ error: "User has no assigned department" });
+        
+        // --- AUTO-HEAL FIX ---
+        // If there are any faculty members previously created without a department attached,
+        // this will safely catch them and assign them to your department so they aren't lost.
+        await User.updateMany(
+            { role: 'Faculty', department: null },
+            { $set: { department: req.user.department } }
+        );
+
         const faculty = await User.find({ role: 'Faculty', department: req.user.department }).select('-password');
         res.json(faculty);
     } catch (e) { 
+        console.error("Fetch Faculty Error:", e);
         res.status(500).json({ error: "Fetch failed" }); 
     }
 };

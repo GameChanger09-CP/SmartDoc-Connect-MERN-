@@ -70,7 +70,10 @@ const generatePaymentEmail = (doc, installment, index, link) => {
 exports.requestPayment = async (req, res) => {
     try {
         if (!razorpay) return res.status(503).json({ error: "Payment gateway is not configured." });
-        if (!['Main_Admin', 'Dept_Admin'].includes(req.user.role)) return res.status(403).json({ error: "Unauthorized" });
+        
+        // --- MODIFIED: Only Dept_Admin and Faculty can initiate payments ---
+        if (!['Dept_Admin', 'Faculty'].includes(req.user.role)) return res.status(403).json({ error: "Unauthorized: Only Department Admins and Faculty can set fees." });
+        
         if (!isValidId(req.params.id)) return res.status(400).json({ error: "Invalid Document ID" });
 
         const { installments } = req.body; 
@@ -78,7 +81,9 @@ exports.requestPayment = async (req, res) => {
 
         const doc = await Document.findById(req.params.id).populate('user');
         if (!doc) return res.status(404).json({ error: "Document not found" });
-        if (doc.fee_total > 0) return res.status(400).json({ error: "Fee already estimated." });
+        
+        // --- LOCK: Prevents ANYONE from changing the fee once it is set ---
+        if (doc.fee_total > 0) return res.status(400).json({ error: "Fee already estimated and locked." });
 
         const newInstallments = [];
         let totalAmount = 0;
@@ -186,4 +191,4 @@ exports.verifyPayment = async (req, res) => {
 };
 
 exports.verifyPublicPayment = async (req, res) => { exports.verifyPayment(req, res); };
-exports.getKey = (req, res) => { res.status(200).json({ key: process.env.RAZORPAY_KEY_ID }); };
+exports.getKey = (req, res) => { res.status(200).json({ key: process.env.RAZORPAY_KEY_ID }); }; 

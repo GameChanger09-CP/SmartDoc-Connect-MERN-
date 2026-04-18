@@ -158,7 +158,7 @@ export default function DeptDashboard() {
                                 <div className="flex items-center gap-3">
                                     <a href={getFileUrl(doc.file)} target="_blank" rel="noreferrer" className="text-xl font-mono font-bold text-blue-600 hover:underline">{doc.tracking_id}</a>
                                     <button onClick={() => setInfoDoc(doc)} className="text-slate-400 hover:text-blue-600 text-lg">ℹ️</button>
-                                    {doc.fee_total === 0 && <button onClick={() => { setPaymentDoc(doc); setInstallments([{amount: ''}, {amount: ''}]); }} className="text-green-600 hover:text-green-800 text-lg p-1" title="Request Fee">💰</button>}
+                                    {doc.fee_total === 0 && <button onClick={() => { setPaymentDoc(doc); setInstallments([{amount: ''}, {amount: ''}]); }} className="w-8 h-8 rounded-full bg-green-100 text-green-600 hover:bg-green-200 transition flex items-center justify-center font-bold text-sm" title="Request Payment">₹</button>}
                                 </div>
                                 <p className="text-xs text-slate-500 mt-1">Client: <strong>{doc.client_username || 'Unknown'}</strong> • Uploaded: {formatIST(doc.uploaded_at)}</p>
                             </div>
@@ -256,7 +256,7 @@ export default function DeptDashboard() {
                         {installments.map((inst, index) => (
                             <div key={index} className="flex flex-col gap-1">
                                 <label className={`block text-xs font-bold uppercase mb-1 ${index===0 ? 'text-blue-600' : 'text-slate-500'}`}>
-                                    {index === 0 ? '✨ Advance Amount (Paid Now)' : `Future Installment #${index} (Paid Later)`}
+                                    {index === 0 ? '₹ Advance Amount (Paid Now)' : `Future Installment #${index} (Paid Later)`}
                                 </label>
                                 <div className="flex items-center gap-2">
                                     <input 
@@ -305,14 +305,12 @@ export default function DeptDashboard() {
                           <div className="flex justify-between"><span className="text-slate-600">Uploaded:</span><span className="font-mono">{formatIST(infoDoc.uploaded_at)}</span></div>
                           <div className="flex justify-between"><span className="text-slate-600">Sent to Dept:</span><span className="font-mono">{infoDoc.sent_to_dept_at ? formatIST(infoDoc.sent_to_dept_at) : '-'}</span></div>
                           
-                          {/* Array mapping for Departments */}
                           {infoDoc.current_dept && infoDoc.current_dept.length > 0 && (
                                <div className="flex justify-between pl-4 text-xs"><span className="text-slate-500">↳ Assigned Dept Admins:</span><span className="font-bold text-blue-600 text-right">{infoDoc.current_dept.map(d => d.name).join(', ')}</span></div>
                           )}
 
                           <div className="flex justify-between pl-4 border-l-2 border-yellow-200"><span className="text-slate-600">↳ Faculty Assigned:</span><span className="font-mono text-xs">{infoDoc.assigned_to_faculty_at ? formatIST(infoDoc.assigned_to_faculty_at) : '-'}</span></div>
                           
-                          {/* Array mapping for Faculty */}
                           {infoDoc.current_faculty && infoDoc.current_faculty.length > 0 && (
                                <div className="flex justify-between pl-8 text-xs"><span className="text-slate-500">↳ Assigned Staff:</span><span className="font-bold text-orange-600 text-right">{infoDoc.current_faculty.map(f => f.username).join(', ')}</span></div>
                           )}
