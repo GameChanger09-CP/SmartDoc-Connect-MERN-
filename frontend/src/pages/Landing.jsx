@@ -109,7 +109,7 @@ export default function Landing() {
             <p className="text-blue-200 text-sm uppercase tracking-widest">Data Encryption</p>
           </div>
           <div>
-            <h3 className="text-4xl font-extrabold mb-1">24/7</h3>
+            <h3 className="text-4xl font-extrabold mb-1">24/7.</h3>
             <p className="text-blue-200 text-sm uppercase tracking-widest">System Availability</p>
           </div>
         </div>
